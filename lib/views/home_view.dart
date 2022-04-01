@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:peakflow/db/day_entries_provider.dart';
+import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/widgets/date_widget.dart';
 
 class HomeView extends HookConsumerWidget {
@@ -7,11 +9,8 @@ class HomeView extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: Colors.black,
       appBar: AppBar(
-        elevation: 0,
         centerTitle: true,
-        backgroundColor: Colors.black,
         title: const Text("PEAK FLOW"),
         actions: [
           IconButton(onPressed: () {}, icon: const Icon(Icons.bar_chart)),
@@ -43,7 +42,10 @@ class HomeView extends HookConsumerWidget {
             ),
           ]),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+        onPressed: () {
+          Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const AddView()));
+        },
         child: const Icon(Icons.add),
       ),
     );

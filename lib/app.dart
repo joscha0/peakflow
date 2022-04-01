@@ -9,9 +9,11 @@ class App extends StatelessWidget {
     return MaterialApp(
       home: const HomeView(),
       darkTheme: ThemeData(
+        scaffoldBackgroundColor: Colors.black,
+        appBarTheme: AppBarTheme(backgroundColor: Colors.black),
         colorScheme: ColorScheme(
           brightness: Brightness.dark,
-          primary: Colors.black,
+          primary: Colors.blueAccent,
           onPrimary: Colors.white,
           secondary: Colors.blueAccent,
           onSecondary: Colors.white,
