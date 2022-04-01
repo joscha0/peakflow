@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:peakflow/widgets/date_widget.dart';
 
 class HomeView extends HookConsumerWidget {
   const HomeView({Key? key}) : super(key: key);
@@ -20,8 +21,27 @@ class HomeView extends HookConsumerWidget {
       body: GridView(
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
+            childAspectRatio: 0.75,
           ),
-          children: const [Text("test")]),
+          children: [
+            DateWidget(
+              date: DateTime.now().add(Duration(days: -2)),
+              morningValue: 20,
+              bestValue: 200,
+            ),
+            DateWidget(
+              date: DateTime.now().add(Duration(days: -1)),
+              morningValue: 100,
+              eveningValue: 200,
+              bestValue: 200,
+            ),
+            DateWidget(
+              date: DateTime.now().add(Duration(days: -0)),
+              morningValue: 100,
+              eveningValue: 200,
+              bestValue: 200,
+            ),
+          ]),
       floatingActionButton: FloatingActionButton(
         onPressed: () {},
         child: const Icon(Icons.add),
