@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:peakflow/db/day_entries_provider.dart';
+import 'package:peakflow/db/prefs.dart';
 
 class AddView extends StatefulHookConsumerWidget {
   const AddView({Key? key}) : super(key: key);
@@ -16,6 +18,7 @@ class _AddViewState extends ConsumerState<AddView> {
   TimeOfDay time = TimeOfDay.now();
   double sliderValue = 0;
   final valueController = TextEditingController(text: "0");
+  final noteController = TextEditingController();
 
   void pickDate(BuildContext context) async {
     date = await showDatePicker(
@@ -28,8 +31,11 @@ class _AddViewState extends ConsumerState<AddView> {
     setState(() {});
   }
 
-  void pickTime(BuildContext context) {
-    showTimePicker(context: context, initialTime: TimeOfDay.now());
+  void pickTime(BuildContext context) async {
+    time =
+        await showTimePicker(context: context, initialTime: TimeOfDay.now()) ??
+            TimeOfDay.now();
+    setState(() {});
   }
 
   @override
@@ -62,7 +68,7 @@ class _AddViewState extends ConsumerState<AddView> {
                       const Text("Time: "),
                       TextButton(
                           onPressed: () {
-                            pickDate(context);
+                            pickTime(context);
                           },
                           child: Text(time.format(context))),
                     ],
@@ -113,14 +119,34 @@ class _AddViewState extends ConsumerState<AddView> {
                     ),
                   ),
                 ],
-              )
+              ),
+              const SizedBox(
+                height: 8,
+              ),
+              TextFormField(
+                controller: noteController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: "Note",
+                  hintText: "...",
+                  border: OutlineInputBorder(),
+                ),
+              ),
             ],
           ),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        onPressed: () async {
+          if (!_formKey.currentState!.validate()) {
+            return;
+          }
+          await addReading(
+              date, time, sliderValue.round(), noteController.text);
+          ref.read(entryListProvider.notifier).getEntries();
+          Navigator.pop(context);
+        },
         label: const Text("SAVE"),
         icon: const Icon(Icons.save),
       ),
