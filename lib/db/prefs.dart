@@ -77,3 +77,14 @@ Future<void> addReading(
     await prefs.setStringList("dates", dateList);
   }
 }
+
+Future<void> deleteReading(DateTime date, Reading reading) async {
+  final prefs = await SharedPreferences.getInstance();
+  String key = DateFormat("yyyyMMdd").format(date);
+  String? oldEntry = prefs.getString(key);
+  if (oldEntry != null) {
+    DayEntry entry = DayEntry.fromJson(json.decode(oldEntry));
+    entry.readings.remove(reading);
+    await prefs.setString(key, json.encode(entry.toJson()));
+  }
+}

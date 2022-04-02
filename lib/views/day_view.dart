@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
@@ -137,25 +138,35 @@ class _DayViewState extends ConsumerState<DayView> {
                             ),
                           ),
                           Flexible(
-                            child: PopupMenuButton(itemBuilder: (_) {
-                              return ["edit", "delete"]
-                                  .map(
-                                    (String choice) => PopupMenuItem(
-                                      value: choice,
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(choice),
-                                          Icon(choice == "edit"
-                                              ? Icons.edit
-                                              : Icons.delete),
-                                        ],
+                            child: PopupMenuButton(
+                              itemBuilder: (_) {
+                                return ["edit", "delete"]
+                                    .map(
+                                      (String choice) => PopupMenuItem(
+                                        value: choice,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(choice),
+                                            Icon(choice == "edit"
+                                                ? Icons.edit
+                                                : Icons.delete),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                  .toList();
-                            }),
+                                    )
+                                    .toList();
+                              },
+                              onSelected: (value) async {
+                                if (value == "delete") {
+                                  await deleteReading(
+                                      widget.dayEntry.date, reading);
+                                  widget.dayEntry.readings.remove(reading);
+                                  setState(() {});
+                                }
+                              },
+                            ),
                           ),
                         ],
                       ),
