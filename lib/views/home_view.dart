@@ -48,9 +48,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
           children: [
             for (var i = 0; i < entries.length; i++) ...[
               DateWidget(
-                date: entries[i].date,
-                morningValue: entries[i].morningValue,
-                eveningValue: entries[i].eveningValue,
+                dayEntry: entries[i],
                 bestValue: bestValue,
               ),
             ],
