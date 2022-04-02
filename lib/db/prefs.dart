@@ -17,7 +17,12 @@ void setBestValue(int value) async {
 }
 
 Future<void> addReading(
-    DateTime date, TimeOfDay time, int value, String noteDay) async {
+    DateTime date,
+    TimeOfDay time,
+    int value,
+    String noteReading,
+    String noteDay,
+    Map<String, bool> checkboxValues) async {
   DayEntry entry;
   String key = DateFormat("yyyyMMdd").format(date);
   final prefs = await SharedPreferences.getInstance();
@@ -31,9 +36,14 @@ Future<void> addReading(
       note: noteDay,
       morningValue: 0,
       eveningValue: 0,
+      checkboxValues: checkboxValues,
     );
   }
-  entry.readings.add(Reading(time: time, value: value));
+  entry.readings.add(Reading(
+    time: time,
+    value: value,
+    note: noteReading,
+  ));
   int bestValue = await getBestValue();
   if (value > bestValue) {
     setBestValue(value);
@@ -57,9 +67,8 @@ Future<void> addReading(
     note: entry.note,
     morningValue: morningCount >= 1 ? (morningSum / morningCount).round() : -1,
     eveningValue: eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1,
+    checkboxValues: entry.checkboxValues,
   );
-
-  print(newEntry.toJson().toString());
 
   await prefs.setString(key, json.encode(newEntry.toJson()));
   final List<String> dateList = prefs.getStringList("dates") ?? [];

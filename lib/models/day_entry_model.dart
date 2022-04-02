@@ -1,3 +1,4 @@
+import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/reading_model.dart';
 
 class DayEntry {
@@ -6,6 +7,7 @@ class DayEntry {
   final String note;
   final int morningValue;
   final int eveningValue;
+  final Map<String, bool> checkboxValues;
   // final bool cough;
   // final bool coughNight;
   // final bool wheezingBreathing;
@@ -20,7 +22,8 @@ class DayEntry {
     required this.note,
     required this.morningValue,
     required this.eveningValue,
-    // required this.cough,
+    this.checkboxValues = defaultCheckboxValues,
+    // this.cough = false,
     // required this.coughNight,
     // required this.wheezingBreathing,
     // required this.breathlessness,
@@ -36,7 +39,9 @@ class DayEntry {
             .toList(),
         note = json['note'],
         morningValue = json['morningValue'],
-        eveningValue = json['eveningValue'];
+        eveningValue = json['eveningValue'],
+        checkboxValues = Map<String, bool>.from(json['checkboxValues'] ??
+            Map<String, bool>.from(defaultCheckboxValues));
 
   Map<String, dynamic> toJson() {
     return {
@@ -44,7 +49,8 @@ class DayEntry {
       'readings': readings.map((item) => item.toJson()).toList(),
       'note': note,
       'morningValue': morningValue,
-      'eveningValue': eveningValue
+      'eveningValue': eveningValue,
+      'checkboxValues': checkboxValues
     };
   }
 }
