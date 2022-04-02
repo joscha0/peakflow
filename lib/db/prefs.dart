@@ -64,10 +64,10 @@ Future<void> addReading(
   DayEntry newEntry = DayEntry(
     date: entry.date,
     readings: entry.readings,
-    note: entry.note,
+    note: noteDay,
     morningValue: morningCount >= 1 ? (morningSum / morningCount).round() : -1,
     eveningValue: eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1,
-    checkboxValues: entry.checkboxValues,
+    checkboxValues: checkboxValues,
   );
 
   await prefs.setString(key, json.encode(newEntry.toJson()));
