@@ -16,6 +16,23 @@ void setBestValue(int value) async {
   await prefs.setInt("bestValue", value);
 }
 
+void updateBestValue() async {
+  final prefs = await SharedPreferences.getInstance();
+  int newBest = 0;
+  List<String> dateList = prefs.getStringList("dates") ?? [];
+  for (String date in dateList) {
+    String? data = prefs.getString(date);
+    if (data != null) {
+      DayEntry entry = DayEntry.fromJson(json.decode(data));
+      for (Reading reading in entry.readings) {
+        if (reading.value > newBest) {
+          newBest = reading.value;
+        }
+      }
+    }
+  }
+}
+
 Future<void> addReading(
     DateTime date,
     TimeOfDay time,
@@ -48,25 +65,13 @@ Future<void> addReading(
   if (value > bestValue) {
     setBestValue(value);
   }
-  int morningSum = 0;
-  int morningCount = 0;
-  int eveningSum = 0;
-  int eveningCount = 0;
-  for (Reading reading in entry.readings) {
-    if (reading.time.hour < 12) {
-      morningSum += reading.value;
-      morningCount++;
-    } else {
-      eveningSum += reading.value;
-      eveningCount++;
-    }
-  }
+  List<int> morningEvening = getMorningEveningValue(entry.readings);
   DayEntry newEntry = DayEntry(
     date: entry.date,
     readings: entry.readings,
     note: noteDay,
-    morningValue: morningCount >= 1 ? (morningSum / morningCount).round() : -1,
-    eveningValue: eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1,
+    morningValue: morningEvening[0],
+    eveningValue: morningEvening[1],
     checkboxValues: checkboxValues,
   );
 
@@ -78,13 +83,58 @@ Future<void> addReading(
   }
 }
 
-Future<void> deleteReading(DateTime date, Reading reading) async {
+Future<void> deleteReading(DateTime date, int readingIndex) async {
   final prefs = await SharedPreferences.getInstance();
   String key = DateFormat("yyyyMMdd").format(date);
   String? oldEntry = prefs.getString(key);
   if (oldEntry != null) {
     DayEntry entry = DayEntry.fromJson(json.decode(oldEntry));
-    entry.readings.remove(reading);
-    await prefs.setString(key, json.encode(entry.toJson()));
+    entry.readings.removeAt(readingIndex);
+    print(entry.readings);
+    List<int> morningEvening = getMorningEveningValue(entry.readings);
+    DayEntry newEntry = DayEntry(
+      date: entry.date,
+      readings: entry.readings,
+      note: entry.note,
+      morningValue: morningEvening[0],
+      eveningValue: morningEvening[1],
+      checkboxValues: entry.checkboxValues,
+    );
+    print(entry.readings.length);
+    print(newEntry.readings.length);
+    await prefs.setString(key, json.encode(newEntry.toJson()));
+    updateBestValue();
   }
+}
+
+List<int> getMorningEveningValue(List<Reading> readings) {
+  int morningSum = 0;
+  int morningCount = 0;
+  int eveningSum = 0;
+  int eveningCount = 0;
+  for (Reading reading in readings) {
+    if (reading.time.hour < 12) {
+      morningSum += reading.value;
+      morningCount++;
+    } else {
+      eveningSum += reading.value;
+      eveningCount++;
+    }
+  }
+  List<int> morningEvening = [];
+  morningEvening
+      .add(morningCount >= 1 ? (morningSum / morningCount).round() : -1);
+  morningEvening
+      .add(eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1);
+  return morningEvening;
+}
+
+Future<void> deleteDay(DateTime date) async {
+  final prefs = await SharedPreferences.getInstance();
+  String key = DateFormat("yyyyMMdd").format(date);
+  await prefs.remove(key);
+  List<String> dateList = prefs.getStringList("dates") ?? [];
+  dateList.remove(key);
+  await prefs.setStringList("dates", dateList);
+  updateBestValue();
 }

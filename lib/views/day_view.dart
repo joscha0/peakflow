@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:peakflow/db/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
 import 'package:peakflow/models/day_entry_model.dart';
@@ -27,7 +28,6 @@ class _DayViewState extends ConsumerState<DayView> {
         symptoms.add(symptom);
       }
     }
-    print(symptoms);
     super.initState();
   }
 
@@ -36,6 +36,33 @@ class _DayViewState extends ConsumerState<DayView> {
     return Scaffold(
       appBar: AppBar(
         title: Text(DateFormat("dd.MM.yyyy").format(widget.dayEntry.date)),
+        actions: [
+          PopupMenuButton(
+            itemBuilder: (_) {
+              return ["edit", "delete"]
+                  .map(
+                    (String choice) => PopupMenuItem(
+                      value: choice,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(choice),
+                          Icon(choice == "edit" ? Icons.edit : Icons.delete),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList();
+            },
+            onSelected: (value) async {
+              if (value == "delete") {
+                await deleteDay(widget.dayEntry.date);
+                ref.read(entryListProvider.notifier).getEntries();
+                Navigator.of(context).pop();
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -45,14 +72,18 @@ class _DayViewState extends ConsumerState<DayView> {
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "Notes: ",
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Notes",
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                        Text(widget.dayEntry.note),
+                      ],
                     ),
-                    Text(widget.dayEntry.note),
                   ],
                 ),
               ),
@@ -161,8 +192,13 @@ class _DayViewState extends ConsumerState<DayView> {
                               onSelected: (value) async {
                                 if (value == "delete") {
                                   await deleteReading(
-                                      widget.dayEntry.date, reading);
+                                      widget.dayEntry.date,
+                                      widget.dayEntry.readings
+                                          .indexOf(reading));
                                   widget.dayEntry.readings.remove(reading);
+                                  ref
+                                      .read(entryListProvider.notifier)
+                                      .getEntries();
                                   setState(() {});
                                 }
                               },
