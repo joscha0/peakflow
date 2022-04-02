@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:peakflow/db/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
-import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/widgets/date_widget.dart';
 
@@ -14,7 +13,6 @@ class HomeView extends StatefulHookConsumerWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
-  // late List<DayEntry> entries;
   late int bestValue;
 
   @override
@@ -41,6 +39,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
         ],
       ),
       body: GridView(
+          padding: const EdgeInsets.all(8.0),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
             childAspectRatio: 0.75,
