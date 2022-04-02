@@ -3,6 +3,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:peakflow/db/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/views/add_view.dart';
+import 'package:peakflow/views/graph_view.dart';
 import 'package:peakflow/widgets/date_widget.dart';
 
 class HomeView extends StatefulHookConsumerWidget {
@@ -34,7 +35,12 @@ class _HomeViewState extends ConsumerState<HomeView> {
         centerTitle: true,
         title: const Text("PEAK FLOW"),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.bar_chart)),
+          IconButton(
+              onPressed: () {
+                Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const GraphView()));
+              },
+              icon: const Icon(Icons.bar_chart)),
           IconButton(onPressed: () {}, icon: const Icon(Icons.settings)),
         ],
       ),
