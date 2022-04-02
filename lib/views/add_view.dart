@@ -1,9 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:peakflow/db/day_entries_provider.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
@@ -131,19 +132,19 @@ class _AddViewState extends ConsumerState<AddView> {
                         controller: valueController,
                         keyboardType: TextInputType.number,
                         onChanged: (value) {
-                          String newValue =
-                              value.replaceAll(",", "").replaceAll(".", "");
-
                           setState(() {
-                            if (newValue.isNotEmpty) {
-                              double newSliderValue = double.parse(newValue);
+                            if (value.isNotEmpty) {
+                              double newSliderValue = double.parse(value);
                               if (newSliderValue > 0 && newSliderValue < 900) {
                                 sliderValue = newSliderValue;
                               }
                             }
-                            valueController.text = newValue;
                           });
                         },
+                        inputFormatters: [
+                          FilteringTextInputFormatter(RegExp(r'[0-9]'),
+                              allow: true),
+                        ],
                         decoration: const InputDecoration(
                           labelText: "value",
                           hintText: "123",
