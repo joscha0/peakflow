@@ -1,13 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:peakflow/db/day_entries_provider.dart';
+import 'package:peakflow/db/prefs.dart';
+import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/widgets/date_widget.dart';
 
-class HomeView extends HookConsumerWidget {
+class HomeView extends StatefulHookConsumerWidget {
   const HomeView({Key? key}) : super(key: key);
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  _HomeViewState createState() => _HomeViewState();
+}
+
+class _HomeViewState extends ConsumerState<HomeView> {
+  // late List<DayEntry> entries;
+  late int bestValue;
+
+  @override
+  void initState() {
+    init();
+    super.initState();
+  }
+
+  void init() async {
+    bestValue = await getBestValue();
+    ref.read(entryListProvider.notifier).getEntries();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = ref.watch(entryListProvider);
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
@@ -23,23 +46,14 @@ class HomeView extends HookConsumerWidget {
             childAspectRatio: 0.75,
           ),
           children: [
-            DateWidget(
-              date: DateTime.now().add(Duration(days: -2)),
-              morningValue: 20,
-              bestValue: 200,
-            ),
-            DateWidget(
-              date: DateTime.now().add(Duration(days: -1)),
-              morningValue: 100,
-              eveningValue: 200,
-              bestValue: 200,
-            ),
-            DateWidget(
-              date: DateTime.now().add(Duration(days: -0)),
-              morningValue: 100,
-              eveningValue: 200,
-              bestValue: 200,
-            ),
+            for (var i = 0; i < entries.length; i++) ...[
+              DateWidget(
+                date: entries[i].date,
+                morningValue: entries[i].morningValue,
+                eveningValue: entries[i].eveningValue,
+                bestValue: bestValue,
+              ),
+            ],
           ]),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
