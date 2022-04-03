@@ -75,6 +75,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setInt(
                           "maxVolume", int.parse(maxController.text));
+                      FocusScope.of(context).unfocus();
                     },
                     child: const Text(
                       "SAVE",
