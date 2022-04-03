@@ -115,7 +115,10 @@ class _DayViewState extends ConsumerState<DayView> {
                 children: [
                   for (String symptom in symptoms) ...[
                     Chip(
-                      label: Text(symptom),
+                      label: Text(
+                        symptom,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                       backgroundColor: Colors.blueAccent.shade700,
                     ),
                   ],
@@ -245,7 +248,7 @@ class _DayViewState extends ConsumerState<DayView> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.of(context).push(MaterialPageRoute(
+          Navigator.of(context).pushReplacement(MaterialPageRoute(
               builder: (_) => AddView(
                     date: widget.dayEntry.date,
                   )));
