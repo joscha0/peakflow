@@ -138,3 +138,19 @@ Future<void> deleteDay(DateTime date) async {
   await prefs.setStringList("dates", dateList);
   updateBestValue();
 }
+
+Future<DayEntry> updateDay(
+    DayEntry dayEntry, String note, Map<String, bool> checkboxValues) async {
+  String key = DateFormat("yyyyMMdd").format(dayEntry.date);
+  final prefs = await SharedPreferences.getInstance();
+  DayEntry newEntry = DayEntry(
+      date: dayEntry.date,
+      readings: dayEntry.readings,
+      note: note,
+      morningValue: dayEntry.morningValue,
+      eveningValue: dayEntry.eveningValue,
+      checkboxValues: checkboxValues);
+
+  await prefs.setString(key, json.encode(newEntry.toJson()));
+  return newEntry;
+}

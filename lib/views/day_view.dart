@@ -6,6 +6,7 @@ import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
+import 'package:peakflow/views/edit_day_view.dart';
 
 class DayView extends StatefulHookConsumerWidget {
   const DayView({Key? key, required this.dayEntry, required this.bestValue})
@@ -59,6 +60,9 @@ class _DayViewState extends ConsumerState<DayView> {
                 await deleteDay(widget.dayEntry.date);
                 ref.read(entryListProvider.notifier).getEntries();
                 Navigator.of(context).pop();
+              } else if (value == "edit") {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => EditDayView(dayEntry: widget.dayEntry)));
               }
             },
           ),
