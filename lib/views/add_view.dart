@@ -11,7 +11,8 @@ import 'package:peakflow/models/day_entry_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AddView extends StatefulHookConsumerWidget {
-  const AddView({Key? key}) : super(key: key);
+  final DateTime? date;
+  const AddView({Key? key, this.date}) : super(key: key);
 
   @override
   ConsumerState<ConsumerStatefulWidget> createState() => _AddViewState();
@@ -20,7 +21,7 @@ class AddView extends StatefulHookConsumerWidget {
 class _AddViewState extends ConsumerState<AddView> {
   final _formKey = GlobalKey<FormState>();
 
-  DateTime date = DateTime.now();
+  late DateTime date;
   TimeOfDay time = TimeOfDay.now();
   double sliderValue = 0;
   int maxVolume = 850;
@@ -52,6 +53,7 @@ class _AddViewState extends ConsumerState<AddView> {
 
   @override
   void initState() {
+    date = widget.date ?? DateTime.now();
     getDay();
     loadMax();
     super.initState();

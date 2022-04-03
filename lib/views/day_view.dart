@@ -6,6 +6,7 @@ import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
+import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/views/edit_day_view.dart';
 import 'package:peakflow/views/edit_reading_view.dart';
 
@@ -240,6 +241,17 @@ class _DayViewState extends ConsumerState<DayView> {
             ]
           ]),
         ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => AddView(
+                    date: widget.dayEntry.date,
+                  )));
+        },
+        label: const Text("Add reading"),
+        icon: const Icon(Icons.add),
       ),
     );
   }
