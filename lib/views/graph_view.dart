@@ -66,7 +66,10 @@ class _GraphViewState extends ConsumerState<GraphView> {
                     touchTooltipData: LineTouchTooltipData(
                         fitInsideHorizontally: true,
                         fitInsideVertically: true,
-                        tooltipBgColor: Colors.grey.shade900,
+                        tooltipBgColor:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey.shade900
+                                : Colors.white,
                         getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
                           List data = [];
                           for (int i = 0; i < entries.length; i++) {

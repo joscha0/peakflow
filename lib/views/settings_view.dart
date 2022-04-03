@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:peakflow/providers/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsView extends StatefulHookConsumerWidget {
@@ -41,6 +42,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             onChanged: (value) async {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool("isDarkMode", value);
+              ref.read(themeStateNotifier).setIsDarkMode(value);
               setState(() {
                 isDarkMode = value;
               });
@@ -74,7 +76,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       await prefs.setInt(
                           "maxVolume", int.parse(maxController.text));
                     },
-                    child: const Text("SAVE")),
+                    child: const Text(
+                      "SAVE",
+                      style: TextStyle(color: Colors.white),
+                    )),
               )
             ],
           )

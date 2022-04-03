@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:peakflow/db/day_entries_provider.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
 import 'package:peakflow/models/day_entry_model.dart';

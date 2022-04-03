@@ -1,35 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/views/home_view.dart';
 
-class App extends StatelessWidget {
+class App extends HookConsumerWidget {
   const App({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeStateNotifier);
+
     return MaterialApp(
       home: const HomeView(),
-      darkTheme: ThemeData(
-        scaffoldBackgroundColor: Colors.black,
-        appBarTheme: AppBarTheme(backgroundColor: Colors.black),
-        colorScheme: ColorScheme(
-          brightness: Brightness.dark,
-          primary: Colors.blueAccent.shade700,
-          onPrimary: Colors.white,
-          secondary: Colors.blueAccent.shade700,
-          onSecondary: Colors.white,
-          error: Colors.red,
-          onError: Colors.red,
-          background: Colors.black,
-          onBackground: Colors.white,
-          surface: Colors.grey.shade900,
-          onSurface: Colors.white,
-        ),
-        sliderTheme: SliderThemeData(valueIndicatorColor: Colors.grey.shade900),
-        toggleableActiveColor: Colors.blueAccent.shade700,
-        cardColor: Colors.grey.shade900,
-        brightness: Brightness.dark,
-      ),
-      themeMode: ThemeMode.dark,
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
       debugShowCheckedModeBanner: false,
     );
   }
