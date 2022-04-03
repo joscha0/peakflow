@@ -8,7 +8,7 @@
 PRODUCT_NAME = peakflow
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.peakflow
+PRODUCT_BUNDLE_IDENTIFIER = com.joscha0.peakflow
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2022 com.example. All rights reserved.
