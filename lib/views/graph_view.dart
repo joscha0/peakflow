@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/models/day_entry_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class GraphView extends StatefulHookConsumerWidget {
   const GraphView({Key? key}) : super(key: key);
@@ -15,6 +16,7 @@ class GraphView extends StatefulHookConsumerWidget {
 
 class _GraphViewState extends ConsumerState<GraphView> {
   late int bestValue;
+  int maxVolume = 850;
 
   @override
   void initState() {
@@ -25,6 +27,11 @@ class _GraphViewState extends ConsumerState<GraphView> {
   void getData() async {
     bestValue = await getBestValue();
     ref.read(entryListProvider.notifier).getEntries();
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      maxVolume = prefs.getInt("maxVolume") ?? 850;
+    });
   }
 
   @override
@@ -61,7 +68,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                   ),
                 ),
                 minY: 0,
-                maxY: 850,
+                maxY: maxVolume.toDouble(),
                 lineTouchData: LineTouchData(
                     touchTooltipData: LineTouchTooltipData(
                         fitInsideHorizontally: true,

@@ -23,6 +23,7 @@ class _AddViewState extends ConsumerState<AddView> {
   DateTime date = DateTime.now();
   TimeOfDay time = TimeOfDay.now();
   double sliderValue = 0;
+  int maxVolume = 850;
   final valueController = TextEditingController(text: "0");
   final noteController = TextEditingController();
   final noteDayController = TextEditingController();
@@ -52,6 +53,7 @@ class _AddViewState extends ConsumerState<AddView> {
   @override
   void initState() {
     getDay();
+    loadMax();
     super.initState();
   }
 
@@ -69,6 +71,14 @@ class _AddViewState extends ConsumerState<AddView> {
       noteDayController.text = "";
       checkboxValues = Map<String, bool>.from(defaultCheckboxValues);
     }
+  }
+
+  void loadMax() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      maxVolume = prefs.getInt("maxVolume") ?? 850;
+    });
   }
 
   @override
@@ -116,8 +126,8 @@ class _AddViewState extends ConsumerState<AddView> {
                       flex: 4,
                       child: Slider(
                         value: sliderValue,
-                        max: 900,
-                        divisions: 18,
+                        max: maxVolume.toDouble(),
+                        divisions: maxVolume ~/ 50,
                         label: sliderValue.round().toString(),
                         onChanged: (double value) {
                           setState(() {
@@ -135,7 +145,8 @@ class _AddViewState extends ConsumerState<AddView> {
                           setState(() {
                             if (value.isNotEmpty) {
                               double newSliderValue = double.parse(value);
-                              if (newSliderValue > 0 && newSliderValue < 900) {
+                              if (newSliderValue > 0 &&
+                                  newSliderValue < maxVolume) {
                                 sliderValue = newSliderValue;
                               }
                             }
@@ -171,7 +182,7 @@ class _AddViewState extends ConsumerState<AddView> {
                 ),
                 const Text(
                   "Symptoms of the day",
-                  style: TextStyle(fontSize: 18),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(
                   height: 8,
