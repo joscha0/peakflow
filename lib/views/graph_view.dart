@@ -4,7 +4,6 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
-import 'package:peakflow/models/day_entry_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class GraphView extends StatefulHookConsumerWidget {

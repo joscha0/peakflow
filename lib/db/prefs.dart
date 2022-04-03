@@ -81,7 +81,6 @@ Future<DayEntry> addReading(
     dateList.add(key);
     await prefs.setStringList("dates", dateList);
   }
-  print(newEntry.readings.first.value);
   return newEntry;
 }
 

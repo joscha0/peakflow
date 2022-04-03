@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 const Map<String, bool> defaultCheckboxValues = {
   "Cough": false,

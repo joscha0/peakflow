@@ -36,8 +36,7 @@ class DateWidget extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                if (dayEntry.morningValue != null &&
-                    dayEntry.morningValue != -1) ...[
+                if (dayEntry.morningValue != -1) ...[
                   Column(
                     children: [
                       Icon(
@@ -53,8 +52,7 @@ class DateWidget extends StatelessWidget {
                     ],
                   ),
                 ],
-                if (dayEntry.eveningValue != null &&
-                    dayEntry.eveningValue != -1) ...[
+                if (dayEntry.eveningValue != -1) ...[
                   Column(
                     children: [
                       Icon(
