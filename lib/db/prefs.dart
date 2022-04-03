@@ -33,7 +33,7 @@ void updateBestValue() async {
   }
 }
 
-Future<void> addReading(
+Future<DayEntry> addReading(
     DateTime date,
     TimeOfDay time,
     int value,
@@ -81,6 +81,8 @@ Future<void> addReading(
     dateList.add(key);
     await prefs.setStringList("dates", dateList);
   }
+  print(newEntry.readings.first.value);
+  return newEntry;
 }
 
 Future<void> deleteReading(DateTime date, int readingIndex) async {
@@ -90,7 +92,6 @@ Future<void> deleteReading(DateTime date, int readingIndex) async {
   if (oldEntry != null) {
     DayEntry entry = DayEntry.fromJson(json.decode(oldEntry));
     entry.readings.removeAt(readingIndex);
-    print(entry.readings);
     List<int> morningEvening = getMorningEveningValue(entry.readings);
     DayEntry newEntry = DayEntry(
       date: entry.date,
@@ -100,8 +101,6 @@ Future<void> deleteReading(DateTime date, int readingIndex) async {
       eveningValue: morningEvening[1],
       checkboxValues: entry.checkboxValues,
     );
-    print(entry.readings.length);
-    print(newEntry.readings.length);
     await prefs.setString(key, json.encode(newEntry.toJson()));
     updateBestValue();
   }
@@ -153,4 +152,11 @@ Future<DayEntry> updateDay(
 
   await prefs.setString(key, json.encode(newEntry.toJson()));
   return newEntry;
+}
+
+Future<DayEntry> updateReading(
+    DayEntry dayEntry, Reading reading, int readingIndex) async {
+  await deleteReading(dayEntry.date, readingIndex);
+  return await addReading(dayEntry.date, reading.time, reading.value,
+      reading.note, dayEntry.note, dayEntry.checkboxValues);
 }

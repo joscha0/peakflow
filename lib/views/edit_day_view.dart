@@ -26,7 +26,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
 
   @override
   void initState() {
-    getDay();
+    getDay(); // load saved state
     super.initState();
   }
 
