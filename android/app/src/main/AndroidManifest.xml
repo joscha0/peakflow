@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.joscha0.peakflow">
    <application
-        android:label="peakflow"
+        android:label="Peak Flow"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
