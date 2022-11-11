@@ -27,6 +27,7 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  csv: ^5.0.1
   cupertino_icons: ^1.0.2
   fl_chart: ^0.50.0
   flutter:
@@ -34,6 +35,7 @@ dependencies:
   flutter_hooks: ^0.18.2+1
   hooks_riverpod: ^1.0.3
   intl: ^0.17.0
+  share_plus: ^6.2.0
   shared_preferences: ^2.0.13
 
 dev_dependencies:
