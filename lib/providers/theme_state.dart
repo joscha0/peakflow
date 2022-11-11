@@ -4,12 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeState extends ChangeNotifier {
   bool isDarkMode =
-      SchedulerBinding.instance!.window.platformBrightness == Brightness.dark;
+      SchedulerBinding.instance.window.platformBrightness == Brightness.dark;
 
   ThemeState() {
     SharedPreferences.getInstance().then((prefs) {
       isDarkMode = prefs.getBool("isDarkMode") ??
-          SchedulerBinding.instance!.window.platformBrightness ==
+          SchedulerBinding.instance.window.platformBrightness ==
               Brightness.dark;
       notifyListeners();
     });
