@@ -50,20 +50,19 @@ class _HomeViewState extends ConsumerState<HomeView> {
               icon: const Icon(Icons.settings)),
         ],
       ),
-      body: GridView(
+      body: GridView.builder(
           padding: const EdgeInsets.all(8.0),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
             childAspectRatio: 0.75,
           ),
-          children: [
-            for (var i = 0; i < entries.length; i++) ...[
-              DateWidget(
-                dayEntry: entries[i],
-                bestValue: bestValue,
-              ),
-            ],
-          ]),
+          itemCount: entries.length,
+          itemBuilder: (BuildContext ctx, index) {
+            return DateWidget(
+              dayEntry: entries[index],
+              bestValue: bestValue,
+            );
+          }),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.of(context)
