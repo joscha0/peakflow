@@ -17,6 +17,8 @@ class HomeView extends StatefulHookConsumerWidget {
 class _HomeViewState extends ConsumerState<HomeView> {
   late int bestValue;
 
+  bool sortUp = true;
+
   @override
   void initState() {
     init();
@@ -25,7 +27,16 @@ class _HomeViewState extends ConsumerState<HomeView> {
 
   void init() async {
     bestValue = await getBestValue();
+    sortUp = await getSortValue();
     ref.read(entryListProvider.notifier).getEntries();
+  }
+
+  void changeSort() {
+    ref.read(entryListProvider.notifier).changeSort();
+    setState(() {
+      sortUp = !sortUp;
+    });
+    setSortValue(sortUp);
   }
 
   @override
@@ -36,6 +47,9 @@ class _HomeViewState extends ConsumerState<HomeView> {
         centerTitle: true,
         title: const Text("PEAK FLOW"),
         actions: [
+          IconButton(
+              onPressed: changeSort,
+              icon: Icon(sortUp ? Icons.arrow_upward : Icons.arrow_downward)),
           IconButton(
               onPressed: () {
                 Navigator.of(context)

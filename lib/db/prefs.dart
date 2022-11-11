@@ -11,9 +11,19 @@ Future<int> getBestValue() async {
   return prefs.getInt("bestValue") ?? 0;
 }
 
+Future<bool> getSortValue() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool("sortValue") ?? true;
+}
+
 void setBestValue(int value) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setInt("bestValue", value);
+}
+
+void setSortValue(bool value) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool("sortValue", value);
 }
 
 void updateBestValue() async {
