@@ -8,6 +8,7 @@ import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingsView extends StatefulHookConsumerWidget {
   const SettingsView({Key? key}) : super(key: key);
@@ -147,8 +148,24 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ElevatedButton(
-                onPressed: exportCSV, child: const Text("Export CSV")),
-          )
+                onPressed: exportCSV,
+                child: const Text("Export CSV",
+                    style: TextStyle(color: Colors.white))),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 24.0),
+            child: Text('Github',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ),
+          IconButton(
+            icon: Image.asset(
+                isDarkMode ? 'assets/github.png' : 'assets/github2.png'),
+            onPressed: () async => launchUrl(
+                Uri.parse('https://github.com/joscha0/peakflow'),
+                mode: LaunchMode.externalApplication),
+          ),
+          const SizedBox(height: 10),
+          const Text('Made with ❤️ by @joscha0')
         ]),
       ),
     );
