@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
@@ -82,6 +83,23 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       ],
       sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
     );
+  }
+
+  Future<void> setNotification() async {
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+    const AndroidNotificationDetails androidNotificationDetails =
+        AndroidNotificationDetails('peakflow daily', 'Peakflow daily reminder',
+            channelDescription: 'Peakflow daily reminder to take record');
+    const NotificationDetails notificationDetails =
+        NotificationDetails(android: androidNotificationDetails);
+    flutterLocalNotificationsPlugin.periodicallyShow(
+        0,
+        'Test your Peakflow',
+        'Take your peakflow record now!',
+        RepeatInterval.daily,
+        notificationDetails,
+        androidAllowWhileIdle: true);
   }
 
   @override
