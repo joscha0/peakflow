@@ -31,20 +31,31 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
   void loadSpots() {
     List<FlSpot> newSpots = [];
+    int index = 0;
     for (int i = 0; i < entriesFiltered.length; i++) {
+      if (i > 0) {
+        index +=
+            daysBetween(entriesFiltered[i - 1].date, entriesFiltered[i].date);
+      }
       if (entriesFiltered[i].morningValue != -1) {
-        newSpots
-            .add(FlSpot(i - 0.5, entriesFiltered[i].morningValue.toDouble()));
+        newSpots.add(
+            FlSpot(index - 0.5, entriesFiltered[i].morningValue.toDouble()));
       }
       if (entriesFiltered[i].eveningValue != -1) {
-        newSpots.add(
-            FlSpot(i.toDouble(), entriesFiltered[i].eveningValue.toDouble()));
+        newSpots.add(FlSpot(
+            index.toDouble(), entriesFiltered[i].eveningValue.toDouble()));
       }
     }
 
     setState(() {
       spots = newSpots;
     });
+  }
+
+  int daysBetween(DateTime from, DateTime to) {
+    from = DateTime(from.year, from.month, from.day);
+    to = DateTime(to.year, to.month, to.day);
+    return (to.difference(from).inHours / 24).round();
   }
 
   void getData() async {
@@ -181,6 +192,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
                     spots: spots,
                     color: Colors.blueAccent.shade700,
                     isCurved: true,
+                    curveSmoothness: 0.3,
+                    preventCurveOverShooting: true,
                   ),
                 ],
               ),
