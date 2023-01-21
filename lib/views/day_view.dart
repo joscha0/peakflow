@@ -60,7 +60,7 @@ class _DayViewState extends ConsumerState<DayView> {
             onSelected: (value) async {
               if (value == "delete") {
                 await deleteDay(widget.dayEntry.date);
-                ref.read(entryListProvider.notifier).getEntries();
+                ref.read(entryListProvider.notifier).loadEntries();
                 Navigator.of(context).pop();
               } else if (value == "edit") {
                 Navigator.of(context).push(MaterialPageRoute(
@@ -207,7 +207,7 @@ class _DayViewState extends ConsumerState<DayView> {
                                   widget.dayEntry.readings.remove(reading);
                                   ref
                                       .read(entryListProvider.notifier)
-                                      .getEntries();
+                                      .loadEntries();
                                   setState(() {});
                                 } else if (value == "edit") {
                                   Navigator.of(context).push(MaterialPageRoute(

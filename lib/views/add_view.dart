@@ -227,7 +227,7 @@ class _AddViewState extends ConsumerState<AddView> {
           }
           await addReading(date, time, sliderValue.round(), noteController.text,
               noteDayController.text, checkboxValues);
-          ref.read(entryListProvider.notifier).getEntries();
+          ref.read(entryListProvider.notifier).loadEntries();
           Navigator.pop(context);
         },
         label: const Text("SAVE"),
