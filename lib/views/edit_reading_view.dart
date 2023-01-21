@@ -142,7 +142,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
                   note: noteController.text),
               widget.readingIndex);
           int bestValue = await getBestValue();
-          ref.read(entryListProvider.notifier).getEntries();
+          ref.read(entryListProvider.notifier).loadEntries();
           Navigator.pop(context);
           Navigator.pushReplacement(
               context,

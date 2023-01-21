@@ -28,7 +28,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
   void init() async {
     bestValue = await getBestValue();
     sortUp = await getSortValue();
-    ref.read(entryListProvider.notifier).getEntries();
+    ref.read(entryListProvider.notifier).loadEntries();
   }
 
   void changeSort() {

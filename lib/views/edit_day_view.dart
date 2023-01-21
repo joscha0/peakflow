@@ -100,7 +100,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
           DayEntry newEntry = await updateDay(
               widget.dayEntry, noteDayController.text, checkboxValues);
           int bestValue = await getBestValue();
-          ref.read(entryListProvider.notifier).getEntries();
+          ref.read(entryListProvider.notifier).loadEntries();
           Navigator.pop(context);
           Navigator.pushReplacement(
               context,
