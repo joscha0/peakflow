@@ -7,7 +7,7 @@ import Foundation
 
 import flutter_local_notifications
 import flutter_native_timezone
-import path_provider_macos
+import path_provider_foundation
 import share_plus
 import shared_preferences_foundation
 import url_launcher_macos
