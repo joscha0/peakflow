@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/views/home_view.dart';
 
-class App extends HookConsumerWidget {
-  const App({Key? key}) : super(key: key);
+class App extends ConsumerWidget {
+  const App({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

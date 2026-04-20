@@ -2,20 +2,20 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class AddView extends StatefulHookConsumerWidget {
+class AddView extends ConsumerStatefulWidget {
   final DateTime? date;
-  const AddView({Key? key, this.date}) : super(key: key);
+  const AddView({super.key, this.date});
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _AddViewState();
+  ConsumerState<AddView> createState() => _AddViewState();
 }
 
 class _AddViewState extends ConsumerState<AddView> {
@@ -29,15 +29,18 @@ class _AddViewState extends ConsumerState<AddView> {
   final noteController = TextEditingController();
   final noteDayController = TextEditingController();
 
-  Map<String, bool> checkboxValues =
-      Map<String, bool>.from(defaultCheckboxValues);
+  Map<String, bool> checkboxValues = Map<String, bool>.from(
+    defaultCheckboxValues,
+  );
 
   void pickDate(BuildContext context) async {
-    date = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime.now().add(const Duration(days: -100)),
-            lastDate: DateTime.now()) ??
+    date =
+        await showDatePicker(
+          context: context,
+          initialDate: DateTime.now(),
+          firstDate: DateTime.now().add(const Duration(days: -100)),
+          lastDate: DateTime.now(),
+        ) ??
         DateTime.now();
     getDay();
 
@@ -47,22 +50,25 @@ class _AddViewState extends ConsumerState<AddView> {
   void pickTime(BuildContext context) async {
     time =
         await showTimePicker(context: context, initialTime: TimeOfDay.now()) ??
-            TimeOfDay.now();
+        TimeOfDay.now();
     setState(() {});
   }
 
   @override
   void initState() {
     date = widget.date ?? DateTime.now();
+    super.initState();
     getDay();
     loadMax();
-    super.initState();
   }
 
-  void getDay() async {
+  Future<void> getDay() async {
     final prefs = await SharedPreferences.getInstance();
     String key = DateFormat("yyyyMMdd").format(date);
     String? jsonData = prefs.getString(key);
+    if (!mounted) {
+      return;
+    }
     if (jsonData != null) {
       DayEntry entry = DayEntry.fromJson(json.decode(jsonData));
       setState(() {
@@ -75,20 +81,28 @@ class _AddViewState extends ConsumerState<AddView> {
     }
   }
 
-  void loadMax() async {
+  Future<void> loadMax() async {
     final prefs = await SharedPreferences.getInstance();
-
+    if (!mounted) {
+      return;
+    }
     setState(() {
       maxVolume = prefs.getInt("maxVolume") ?? 850;
     });
   }
 
   @override
+  void dispose() {
+    valueController.dispose();
+    noteController.dispose();
+    noteDayController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Add reading"),
-      ),
+      appBar: AppBar(title: const Text("Add reading")),
       body: SingleChildScrollView(
         child: Form(
           key: _formKey,
@@ -103,22 +117,24 @@ class _AddViewState extends ConsumerState<AddView> {
                       children: [
                         const Text("Date: "),
                         TextButton(
-                            onPressed: () {
-                              pickDate(context);
-                            },
-                            child: Text(DateFormat("dd.MM.yyyy").format(date))),
+                          onPressed: () {
+                            pickDate(context);
+                          },
+                          child: Text(DateFormat("dd.MM.yyyy").format(date)),
+                        ),
                       ],
                     ),
                     Row(
                       children: [
                         const Text("Time: "),
                         TextButton(
-                            onPressed: () {
-                              pickTime(context);
-                            },
-                            child: Text(time.format(context))),
+                          onPressed: () {
+                            pickTime(context);
+                          },
+                          child: Text(time.format(context)),
+                        ),
                       ],
-                    )
+                    ),
                   ],
                 ),
                 Row(
@@ -155,8 +171,10 @@ class _AddViewState extends ConsumerState<AddView> {
                           });
                         },
                         inputFormatters: [
-                          FilteringTextInputFormatter(RegExp(r'[0-9]'),
-                              allow: true),
+                          FilteringTextInputFormatter(
+                            RegExp(r'[0-9]'),
+                            allow: true,
+                          ),
                         ],
                         decoration: const InputDecoration(
                           labelText: "value",
@@ -167,9 +185,7 @@ class _AddViewState extends ConsumerState<AddView> {
                     ),
                   ],
                 ),
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: noteController,
                   maxLines: 3,
@@ -179,29 +195,24 @@ class _AddViewState extends ConsumerState<AddView> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(
-                  height: 32,
-                ),
+                const SizedBox(height: 32),
                 const Text(
                   "Symptoms of the day",
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
                 for (String checkBox in checkboxValues.keys) ...[
                   CheckboxListTile(
-                      value: checkboxValues[checkBox],
-                      title: Text(checkBox),
-                      onChanged: (value) {
-                        setState(() {
-                          checkboxValues[checkBox] = value ?? false;
-                        });
-                      }),
+                    value: checkboxValues[checkBox],
+                    title: Text(checkBox),
+                    onChanged: (value) {
+                      setState(() {
+                        checkboxValues[checkBox] = value ?? false;
+                      });
+                    },
+                  ),
                 ],
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
                 TextFormField(
                   controller: noteDayController,
                   maxLines: 3,
@@ -211,9 +222,7 @@ class _AddViewState extends ConsumerState<AddView> {
                     border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(
-                  height: 32,
-                ),
+                const SizedBox(height: 32),
               ],
             ),
           ),
@@ -225,9 +234,18 @@ class _AddViewState extends ConsumerState<AddView> {
           if (!_formKey.currentState!.validate()) {
             return;
           }
-          await addReading(date, time, sliderValue.round(), noteController.text,
-              noteDayController.text, checkboxValues);
+          await addReading(
+            date,
+            time,
+            sliderValue.round(),
+            noteController.text,
+            noteDayController.text,
+            checkboxValues,
+          );
           ref.read(entryListProvider.notifier).loadEntries();
+          if (!context.mounted) {
+            return;
+          }
           Navigator.pop(context);
         },
         label: const Text("SAVE"),

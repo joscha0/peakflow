@@ -1,33 +1,39 @@
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/views/graph_view.dart';
 import 'package:peakflow/views/settings_view.dart';
 import 'package:peakflow/widgets/date_widget.dart';
 
-class HomeView extends StatefulHookConsumerWidget {
-  const HomeView({Key? key}) : super(key: key);
+class HomeView extends ConsumerStatefulWidget {
+  const HomeView({super.key});
 
   @override
-  _HomeViewState createState() => _HomeViewState();
+  ConsumerState<HomeView> createState() => _HomeViewState();
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
-  late int bestValue;
-
+  int bestValue = 0;
   bool sortUp = true;
 
   @override
   void initState() {
-    init();
     super.initState();
+    init();
   }
 
-  void init() async {
-    bestValue = await getBestValue();
-    sortUp = await getSortValue();
+  Future<void> init() async {
+    final loadedBestValue = await getBestValue();
+    final loadedSortUp = await getSortValue();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      bestValue = loadedBestValue;
+      sortUp = loadedSortUp;
+    });
     ref.read(entryListProvider.notifier).loadEntries();
   }
 
@@ -48,39 +54,43 @@ class _HomeViewState extends ConsumerState<HomeView> {
         title: const Text("PEAK FLOW"),
         actions: [
           IconButton(
-              onPressed: changeSort,
-              icon: Icon(sortUp ? Icons.arrow_upward : Icons.arrow_downward)),
+            onPressed: changeSort,
+            icon: Icon(sortUp ? Icons.arrow_upward : Icons.arrow_downward),
+          ),
           IconButton(
-              onPressed: () {
-                Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => const GraphView()));
-              },
-              icon: const Icon(Icons.bar_chart)),
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const GraphView()));
+            },
+            icon: const Icon(Icons.bar_chart),
+          ),
           IconButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsView()));
-              },
-              icon: const Icon(Icons.settings)),
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const SettingsView()));
+            },
+            icon: const Icon(Icons.settings),
+          ),
         ],
       ),
       body: GridView.builder(
-          padding: const EdgeInsets.all(8.0),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            childAspectRatio: 0.75,
-          ),
-          itemCount: entries.length,
-          itemBuilder: (BuildContext ctx, index) {
-            return DateWidget(
-              dayEntry: entries[index],
-              bestValue: bestValue,
-            );
-          }),
+        padding: const EdgeInsets.all(8.0),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          childAspectRatio: 0.75,
+        ),
+        itemCount: entries.length,
+        itemBuilder: (BuildContext ctx, index) {
+          return DateWidget(dayEntry: entries[index], bestValue: bestValue);
+        },
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const AddView()));
+          Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const AddView()));
         },
         child: const Icon(Icons.add),
       ),

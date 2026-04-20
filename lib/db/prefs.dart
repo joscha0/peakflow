@@ -16,17 +16,17 @@ Future<bool> getSortValue() async {
   return prefs.getBool("sortValue") ?? true;
 }
 
-void setBestValue(int value) async {
+Future<void> setBestValue(int value) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setInt("bestValue", value);
 }
 
-void setSortValue(bool value) async {
+Future<void> setSortValue(bool value) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setBool("sortValue", value);
 }
 
-void updateBestValue() async {
+Future<void> updateBestValue() async {
   final prefs = await SharedPreferences.getInstance();
   int newBest = 0;
   List<String> dateList = prefs.getStringList("dates") ?? [];
@@ -41,15 +41,17 @@ void updateBestValue() async {
       }
     }
   }
+  await prefs.setInt("bestValue", newBest);
 }
 
 Future<DayEntry> addReading(
-    DateTime date,
-    TimeOfDay time,
-    int value,
-    String noteReading,
-    String noteDay,
-    Map<String, bool> checkboxValues) async {
+  DateTime date,
+  TimeOfDay time,
+  int value,
+  String noteReading,
+  String noteDay,
+  Map<String, bool> checkboxValues,
+) async {
   DayEntry entry;
   String key = DateFormat("yyyyMMdd").format(date);
   final prefs = await SharedPreferences.getInstance();
@@ -66,11 +68,7 @@ Future<DayEntry> addReading(
       checkboxValues: checkboxValues,
     );
   }
-  entry.readings.add(Reading(
-    time: time,
-    value: value,
-    note: noteReading,
-  ));
+  entry.readings.add(Reading(time: time, value: value, note: noteReading));
   int bestValue = await getBestValue();
   if (value > bestValue) {
     setBestValue(value);
@@ -130,10 +128,12 @@ List<int> getMorningEveningValue(List<Reading> readings) {
     }
   }
   List<int> morningEvening = [];
-  morningEvening
-      .add(morningCount >= 1 ? (morningSum / morningCount).round() : -1);
-  morningEvening
-      .add(eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1);
+  morningEvening.add(
+    morningCount >= 1 ? (morningSum / morningCount).round() : -1,
+  );
+  morningEvening.add(
+    eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1,
+  );
   return morningEvening;
 }
 
@@ -148,24 +148,37 @@ Future<void> deleteDay(DateTime date) async {
 }
 
 Future<DayEntry> updateDay(
-    DayEntry dayEntry, String note, Map<String, bool> checkboxValues) async {
+  DayEntry dayEntry,
+  String note,
+  Map<String, bool> checkboxValues,
+) async {
   String key = DateFormat("yyyyMMdd").format(dayEntry.date);
   final prefs = await SharedPreferences.getInstance();
   DayEntry newEntry = DayEntry(
-      date: dayEntry.date,
-      readings: dayEntry.readings,
-      note: note,
-      morningValue: dayEntry.morningValue,
-      eveningValue: dayEntry.eveningValue,
-      checkboxValues: checkboxValues);
+    date: dayEntry.date,
+    readings: dayEntry.readings,
+    note: note,
+    morningValue: dayEntry.morningValue,
+    eveningValue: dayEntry.eveningValue,
+    checkboxValues: checkboxValues,
+  );
 
   await prefs.setString(key, json.encode(newEntry.toJson()));
   return newEntry;
 }
 
 Future<DayEntry> updateReading(
-    DayEntry dayEntry, Reading reading, int readingIndex) async {
+  DayEntry dayEntry,
+  Reading reading,
+  int readingIndex,
+) async {
   await deleteReading(dayEntry.date, readingIndex);
-  return await addReading(dayEntry.date, reading.time, reading.value,
-      reading.note, dayEntry.note, dayEntry.checkboxValues);
+  return await addReading(
+    dayEntry.date,
+    reading.time,
+    reading.value,
+    reading.note,
+    dayEntry.note,
+    dayEntry.checkboxValues,
+  );
 }

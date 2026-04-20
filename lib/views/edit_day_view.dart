@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
@@ -10,19 +10,20 @@ import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/day_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class EditDayView extends StatefulHookConsumerWidget {
+class EditDayView extends ConsumerStatefulWidget {
   final DayEntry dayEntry;
 
-  const EditDayView({Key? key, required this.dayEntry}) : super(key: key);
+  const EditDayView({super.key, required this.dayEntry});
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _EditDayViewState();
+  ConsumerState<EditDayView> createState() => _EditDayViewState();
 }
 
 class _EditDayViewState extends ConsumerState<EditDayView> {
   final noteDayController = TextEditingController();
-  Map<String, bool> checkboxValues =
-      Map<String, bool>.from(defaultCheckboxValues);
+  Map<String, bool> checkboxValues = Map<String, bool>.from(
+    defaultCheckboxValues,
+  );
 
   @override
   void initState() {
@@ -30,10 +31,13 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
     super.initState();
   }
 
-  void getDay() async {
+  Future<void> getDay() async {
     final prefs = await SharedPreferences.getInstance();
     String key = DateFormat("yyyyMMdd").format(widget.dayEntry.date);
     String? jsonData = prefs.getString(key);
+    if (!mounted) {
+      return;
+    }
     if (jsonData != null) {
       DayEntry entry = DayEntry.fromJson(json.decode(jsonData));
       setState(() {
@@ -47,11 +51,18 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
   }
 
   @override
+  void dispose() {
+    noteDayController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            "Edit day [${DateFormat("dd.MM.yyyy").format(widget.dayEntry.date)}]"),
+          "Edit day [${DateFormat("dd.MM.yyyy").format(widget.dayEntry.date)}]",
+        ),
       ),
       body: SingleChildScrollView(
         child: Padding(
@@ -67,29 +78,24 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(
-                height: 24,
-              ),
+              const SizedBox(height: 24),
               const Text(
                 "Symptoms of the day",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(
-                height: 8,
-              ),
+              const SizedBox(height: 8),
               for (String checkBox in checkboxValues.keys) ...[
                 CheckboxListTile(
-                    value: checkboxValues[checkBox],
-                    title: Text(checkBox),
-                    onChanged: (value) {
-                      setState(() {
-                        checkboxValues[checkBox] = value ?? false;
-                      });
-                    }),
+                  value: checkboxValues[checkBox],
+                  title: Text(checkBox),
+                  onChanged: (value) {
+                    setState(() {
+                      checkboxValues[checkBox] = value ?? false;
+                    });
+                  },
+                ),
               ],
-              const SizedBox(
-                height: 32,
-              ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -98,17 +104,24 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           DayEntry newEntry = await updateDay(
-              widget.dayEntry, noteDayController.text, checkboxValues);
+            widget.dayEntry,
+            noteDayController.text,
+            checkboxValues,
+          );
           int bestValue = await getBestValue();
           ref.read(entryListProvider.notifier).loadEntries();
+          if (!context.mounted) {
+            return;
+          }
           Navigator.pop(context);
           Navigator.pushReplacement(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation1, animation2) =>
-                    DayView(dayEntry: newEntry, bestValue: bestValue),
-                transitionDuration: const Duration(seconds: 0),
-              ));
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation1, animation2) =>
+                  DayView(dayEntry: newEntry, bestValue: bestValue),
+              transitionDuration: const Duration(seconds: 0),
+            ),
+          );
         },
         label: const Text("SAVE"),
         icon: const Icon(Icons.save),

@@ -4,27 +4,28 @@ import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_native_timezone/flutter_native_timezone.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+import 'package:url_launcher/url_launcher.dart';
 
-class SettingsView extends StatefulHookConsumerWidget {
-  const SettingsView({Key? key}) : super(key: key);
+class SettingsView extends ConsumerStatefulWidget {
+  const SettingsView({super.key});
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _SettingsViewState();
+  ConsumerState<SettingsView> createState() => _SettingsViewState();
 }
 
 class _SettingsViewState extends ConsumerState<SettingsView> {
   final maxController = TextEditingController();
   final titleController = TextEditingController();
   final bodyController = TextEditingController();
+
   bool isDarkMode = true;
   bool hasNotifications = false;
   int notificationHour = 0;
@@ -32,83 +33,114 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   @override
   void initState() {
-    loadSettings();
     super.initState();
+    loadSettings();
   }
 
-  void loadSettings() async {
+  @override
+  void dispose() {
+    maxController.dispose();
+    titleController.dispose();
+    bodyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    maxController.text = (prefs.getInt("maxVolume") ?? 850).toString();
-    isDarkMode = prefs.getBool("isDarkMode") ?? true;
-    titleController.text =
-        prefs.getString("notificationTitle") ?? "Test your Peakflow";
-    bodyController.text =
-        prefs.getString("notificationBody") ?? "Take your peakflow record now!";
-    notificationHour = prefs.getInt('notificationHour') ?? 0;
-    notificationMinute = prefs.getInt('notificationMinute') ?? 0;
-    hasNotifications = await checkHasNotifications();
-    setState(() {});
+    final notificationsEnabled = await checkHasNotifications();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      maxController.text = (prefs.getInt("maxVolume") ?? 850).toString();
+      isDarkMode = prefs.getBool("isDarkMode") ?? true;
+      titleController.text =
+          prefs.getString("notificationTitle") ?? "Test your Peakflow";
+      bodyController.text =
+          prefs.getString("notificationBody") ??
+          "Take your peakflow record now!";
+      notificationHour = prefs.getInt('notificationHour') ?? 0;
+      notificationMinute = prefs.getInt('notificationMinute') ?? 0;
+      hasNotifications = notificationsEnabled;
+    });
   }
 
   List<List<String>> jsonToCsvList(Map<String, dynamic> json) {
-    List<List<String>> listItems = [];
-    String date =
-        DateTime.parse(json['date']).toIso8601String().split('T').first;
+    final listItems = <List<String>>[];
+    final date = DateTime.parse(
+      json['date'] as String,
+    ).toIso8601String().split('T').first;
 
-    List<String> checkboxes = [];
-    Map checkboxValues = Map<String, bool>.from(json['checkboxValues'] ??
-        Map<String, bool>.from(defaultCheckboxValues));
-    for (String checkbox in checkboxValues.keys) {
-      if (checkboxValues[checkbox]) {
+    final checkboxes = <String>[];
+    final checkboxValues = Map<String, bool>.from(
+      json['checkboxValues'] ?? Map<String, bool>.from(defaultCheckboxValues),
+    );
+    for (final checkbox in checkboxValues.keys) {
+      if (checkboxValues[checkbox] ?? false) {
         checkboxes.add(checkbox);
       }
     }
 
-    for (Map reading in json['readings'] as List) {
+    for (final reading in List<Map<String, dynamic>>.from(
+      json['readings'] as List,
+    )) {
       listItems.add([
         date,
-        reading['time'],
+        reading['time'] as String,
         reading['value'].toString(),
-        reading['note'],
-        json['note'],
-        checkboxes.join(', ')
+        reading['note'] as String? ?? '',
+        json['note'] as String? ?? '',
+        checkboxes.join(', '),
       ]);
     }
+
     return listItems;
   }
 
-  void exportCSV() async {
-    List<List<String>> listItems = [];
-    listItems
-        .add(['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms']);
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> dateList = prefs.getStringList("dates") ?? [];
-    dateList.sort();
-    for (String date in dateList) {
-      Map<String, dynamic> values = json.decode(prefs.getString(date) ?? "");
-      listItems += jsonToCsvList(values);
-    }
-    String csv = const ListToCsvConverter().convert(listItems);
-
+  Future<void> exportCSV() async {
     final box = context.findRenderObject() as RenderBox?;
-    Share.shareXFiles(
-      [
-        XFile.fromData(Uint8List.fromList(utf8.encode(csv)),
-            mimeType: 'text/csv')
-      ],
-      sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
+    final listItems = <List<String>>[
+      ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
+    ];
+    final prefs = await SharedPreferences.getInstance();
+    final dateList = prefs.getStringList("dates") ?? <String>[];
+    dateList.sort();
+
+    for (final date in dateList) {
+      final rawValue = prefs.getString(date);
+      if (rawValue == null) {
+        continue;
+      }
+      final values = json.decode(rawValue) as Map<String, dynamic>;
+      listItems.addAll(jsonToCsvList(values));
+    }
+
+    final csv = const ListToCsvConverter().convert(listItems);
+
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            Uint8List.fromList(utf8.encode(csv)),
+            mimeType: 'text/csv',
+          ),
+        ],
+        fileNameOverrides: const ['peakflow-export.csv'],
+        sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
+      ),
     );
   }
 
   Future<void> _configureLocalTimeZone() async {
     tz.initializeTimeZones();
-    final String timeZone = await FlutterNativeTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(timeZone));
+    final timeZone = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(timeZone.identifier));
   }
 
   tz.TZDateTime _convertTime(int hour, int minutes) {
-    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-    tz.TZDateTime scheduleDate = tz.TZDateTime(
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduleDate = tz.TZDateTime(
       tz.local,
       now.year,
       now.month,
@@ -116,6 +148,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       hour,
       minutes,
     );
+
     if (scheduleDate.isBefore(now)) {
       scheduleDate = scheduleDate.add(const Duration(days: 1));
     }
@@ -123,66 +156,66 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   }
 
   Future<FlutterLocalNotificationsPlugin> initializeNotifications() async {
-    _configureLocalTimeZone();
-    FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        FlutterLocalNotificationsPlugin();
+    await _configureLocalTimeZone();
+    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-
-    const InitializationSettings initializationSettings =
-        InitializationSettings(android: initializationSettingsAndroid);
+    const initializationSettings = InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    );
 
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
 
     return flutterLocalNotificationsPlugin;
   }
 
   Future<void> setNotification() async {
-    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        await initializeNotifications();
-    const AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails('peakflow daily', 'Peakflow daily reminder',
-            channelDescription: 'Peakflow daily reminder to take record');
-    const NotificationDetails notificationDetails =
-        NotificationDetails(android: androidNotificationDetails);
+    final flutterLocalNotificationsPlugin = await initializeNotifications();
+    const notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'peakflow_daily',
+        'Peakflow daily reminder',
+        channelDescription: 'Peakflow daily reminder to take record',
+      ),
+    );
 
-    flutterLocalNotificationsPlugin.zonedSchedule(
+    await flutterLocalNotificationsPlugin.zonedSchedule(
       0,
       titleController.text,
       bodyController.text,
       _convertTime(notificationHour, notificationMinute),
       notificationDetails,
-      androidAllowWhileIdle: true,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
     );
   }
 
   Future<bool> checkHasNotifications() async {
-    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        await initializeNotifications();
-    final List<PendingNotificationRequest> pendingNotificationRequests =
-        await flutterLocalNotificationsPlugin.pendingNotificationRequests();
-    print(pendingNotificationRequests);
+    final flutterLocalNotificationsPlugin = await initializeNotifications();
+    final pendingNotificationRequests = await flutterLocalNotificationsPlugin
+        .pendingNotificationRequests();
     return pendingNotificationRequests.isNotEmpty;
   }
 
   Future<void> cancelNotifications() async {
-    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-        await initializeNotifications();
+    final flutterLocalNotificationsPlugin = await initializeNotifications();
     await flutterLocalNotificationsPlugin.cancelAll();
   }
 
-  Future displayTimePicker(BuildContext context) async {
-    var time =
-        await showTimePicker(context: context, initialTime: TimeOfDay.now());
+  Future<void> displayTimePicker(BuildContext context) async {
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
 
-    if (time != null) {
+    if (pickedTime != null) {
       setState(() {
-        notificationHour = time.hour;
-        notificationMinute = time.minute;
+        notificationHour = pickedTime.hour;
+        notificationMinute = pickedTime.minute;
       });
     }
   }
@@ -190,174 +223,214 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Settings"),
-      ),
+      appBar: AppBar(title: const Text("Settings")),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Column(children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 24.0),
-              child: Text('Theme',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            SwitchListTile(
-              value: isDarkMode,
-              onChanged: (value) async {
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool("isDarkMode", value);
-                ref.read(themeStateNotifier).setIsDarkMode(value);
-                setState(() {
-                  isDarkMode = value;
-                });
-              },
-              title: const Text("Dark mode"),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: 24.0),
-              child: Text('Device max capacity',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: maxController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: "max L/min",
-                        hintText: "850",
-                        border: OutlineInputBorder(),
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 24.0),
+                child: Text(
+                  'Theme',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+              SwitchListTile(
+                value: isDarkMode,
+                onChanged: (value) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool("isDarkMode", value);
+                  ref.read(themeStateNotifier).setIsDarkMode(value);
+                  setState(() {
+                    isDarkMode = value;
+                  });
+                },
+                title: const Text("Dark mode"),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 24.0),
+                child: Text(
+                  'Device max capacity',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: maxController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: "max L/min",
+                          hintText: "850",
+                          border: OutlineInputBorder(),
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter(
+                            RegExp(r'[0-9]'),
+                            allow: true,
+                          ),
+                        ],
                       ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter(RegExp(r'[0-9]'),
-                            allow: true),
-                      ],
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: ElevatedButton(
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: ElevatedButton(
                         onPressed: () async {
+                          final value = int.tryParse(maxController.text);
+                          if (value == null) {
+                            return;
+                          }
                           final prefs = await SharedPreferences.getInstance();
-                          await prefs.setInt(
-                              "maxVolume", int.parse(maxController.text));
+                          await prefs.setInt("maxVolume", value);
+                          if (!context.mounted) {
+                            return;
+                          }
                           FocusScope.of(context).unfocus();
                         },
                         child: const Text(
                           "SAVE",
                           style: TextStyle(color: Colors.white),
-                        )),
-                  )
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: 24.0),
-              child: Text('Reminder Notification',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextFormField(
-                controller: titleController,
-                decoration: const InputDecoration(
-                  labelText: "title",
-                  hintText: "Test your Peakflow",
-                  border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextFormField(
-                controller: bodyController,
-                decoration: const InputDecoration(
-                  labelText: "body",
-                  hintText: "Take your peakflow record now!",
-                  border: OutlineInputBorder(),
+              const Padding(
+                padding: EdgeInsets.only(top: 24.0),
+                child: Text(
+                  'Reminder Notification',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  TextButton(
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: TextFormField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    labelText: "title",
+                    hintText: "Test your Peakflow",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: TextFormField(
+                  controller: bodyController,
+                  decoration: const InputDecoration(
+                    labelText: "body",
+                    hintText: "Take your peakflow record now!",
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    TextButton(
                       onPressed: () {
                         FocusScope.of(context).unfocus();
                         displayTimePicker(context);
                       },
                       child: Text(
-                          "Time: ${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')}")),
-                  ElevatedButton(
+                        "Time: ${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')}",
+                      ),
+                    ),
+                    ElevatedButton(
                       onPressed: () async {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setInt(
-                            "notificationHour", notificationHour);
+                          "notificationHour",
+                          notificationHour,
+                        );
                         await prefs.setInt(
-                            "notificationMinute", notificationMinute);
+                          "notificationMinute",
+                          notificationMinute,
+                        );
                         await prefs.setString(
-                            'notificationTitle', titleController.text);
+                          'notificationTitle',
+                          titleController.text,
+                        );
                         await prefs.setString(
-                            'notificationBody', bodyController.text);
+                          'notificationBody',
+                          bodyController.text,
+                        );
 
                         if (hasNotifications) {
-                          setNotification();
+                          await setNotification();
                         }
                       },
                       child: Text(
                         hasNotifications ? 'UPDATE' : 'SAVE',
                         style: const TextStyle(color: Colors.white),
-                      ))
-                ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            SwitchListTile(
-              value: hasNotifications,
-              onChanged: (value) {
-                if (hasNotifications) {
-                  cancelNotifications();
-                } else {
-                  setNotification();
-                }
-                setState(() {
-                  hasNotifications = value;
-                });
-              },
-              title: const Text("Reminder Notification"),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: 24.0),
-              child: Text('Export Data',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: ElevatedButton(
+              SwitchListTile(
+                value: hasNotifications,
+                onChanged: (value) async {
+                  if (hasNotifications) {
+                    await cancelNotifications();
+                  } else {
+                    await setNotification();
+                  }
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    hasNotifications = value;
+                  });
+                },
+                title: const Text("Reminder Notification"),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 24.0),
+                child: Text(
+                  'Export Data',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: ElevatedButton(
                   onPressed: exportCSV,
-                  child: const Text("EXPORT CSV",
-                      style: TextStyle(color: Colors.white))),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: 44.0),
-              child: Text('Github',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
-            IconButton(
-              icon: Image.asset(
-                  isDarkMode ? 'assets/github.png' : 'assets/github2.png'),
-              onPressed: () async => launchUrl(
-                  Uri.parse('https://github.com/joscha0/peakflow'),
-                  mode: LaunchMode.externalApplication),
-            ),
-            const SizedBox(height: 10),
-            const Text('Made with ❤️ by @joscha0')
-          ]),
+                  child: const Text(
+                    "EXPORT CSV",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 44.0),
+                child: Text(
+                  'Github',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+              ),
+              IconButton(
+                icon: Image.asset(
+                  isDarkMode ? 'assets/github.png' : 'assets/github2.png',
+                ),
+                onPressed: () async {
+                  await launchUrl(
+                    Uri.parse('https://github.com/joscha0/peakflow'),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              const Text('Made with ❤️ by @joscha0'),
+            ],
+          ),
         ),
       ),
     );

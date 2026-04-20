@@ -7,7 +7,7 @@ const Map<String, bool> defaultCheckboxValues = {
   "Shortness of breath": false,
   "Difficult breathing": false,
   "Chest tightness or pain": false,
-  "Unable to work": false
+  "Unable to work": false,
 };
 
 Color lightBackground = const Color.fromRGBO(246, 246, 246, 1);
@@ -16,49 +16,31 @@ Color darkCard = Colors.grey.shade900;
 Color accent = Colors.blueAccent.shade700;
 
 ThemeData lightTheme = ThemeData(
+  useMaterial3: false,
   scaffoldBackgroundColor: lightBackground,
-  appBarTheme: AppBarTheme(
-    backgroundColor: lightBackground,
-    elevation: 0,
-  ),
-  colorScheme: ColorScheme(
+  appBarTheme: AppBarTheme(backgroundColor: lightBackground, elevation: 0),
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: accent,
     brightness: Brightness.light,
-    primary: accent,
-    onPrimary: Colors.black,
-    secondary: accent,
-    onSecondary: Colors.white,
-    error: Colors.red,
-    onError: Colors.red,
-    background: lightBackground,
-    onBackground: Colors.black,
     surface: Colors.white,
-    onSurface: Colors.black,
   ),
-  cardTheme: const CardTheme(shadowColor: Colors.black26),
+  cardTheme: const CardThemeData(shadowColor: Colors.black26),
   sliderTheme: const SliderThemeData(valueIndicatorColor: Colors.white),
-  toggleableActiveColor: accent,
-  brightness: Brightness.light,
+  checkboxTheme: CheckboxThemeData(fillColor: WidgetStatePropertyAll(accent)),
 );
 
 ThemeData darkTheme = ThemeData(
+  useMaterial3: false,
   scaffoldBackgroundColor: darkBackground,
   appBarTheme: AppBarTheme(backgroundColor: darkBackground, elevation: 0),
-  colorScheme: ColorScheme(
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: accent,
     brightness: Brightness.dark,
-    primary: accent,
-    onPrimary: Colors.white,
-    secondary: accent,
-    onSecondary: Colors.white,
-    error: Colors.red,
-    onError: Colors.red,
-    background: darkBackground,
-    onBackground: Colors.white,
     surface: darkCard,
-    onSurface: Colors.white,
   ),
   sliderTheme: SliderThemeData(valueIndicatorColor: darkCard),
-  // cardTheme: const CardTheme(shadowColor: Colors.white24),
-  toggleableActiveColor: Colors.blueAccent.shade700,
+  checkboxTheme: CheckboxThemeData(
+    fillColor: WidgetStatePropertyAll(Colors.blueAccent.shade700),
+  ),
   cardColor: darkCard,
-  brightness: Brightness.dark,
 );
