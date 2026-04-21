@@ -27,8 +27,8 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
 
   @override
   void initState() {
-    getDay(); // load saved state
     super.initState();
+    getDay();
   }
 
   Future<void> getDay() async {
@@ -45,8 +45,10 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
         checkboxValues = entry.checkboxValues;
       });
     } else {
-      noteDayController.text = "";
-      checkboxValues = Map<String, bool>.from(defaultCheckboxValues);
+      setState(() {
+        noteDayController.text = "";
+        checkboxValues = Map<String, bool>.from(defaultCheckboxValues);
+      });
     }
   }
 
@@ -56,46 +58,125 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
     super.dispose();
   }
 
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String title,
+    String description,
+  ) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionDivider(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.55),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dateText = DateFormat("dd.MM.yyyy").format(widget.dayEntry.date);
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          "Edit day [${DateFormat("dd.MM.yyyy").format(widget.dayEntry.date)}]",
-        ),
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
+      appBar: AppBar(title: const Text("Edit day"), centerTitle: true),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextFormField(
-                controller: noteDayController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: "Notes day",
-                  hintText: "...",
-                  border: OutlineInputBorder(),
+              Text(
+                'Update the shared day context for $dateText.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+                  height: 1.35,
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                "Symptoms of the day",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              _buildSectionLabel(
+                context,
+                'Symptoms of the Day',
+                'These symptoms are shared across all readings saved on $dateText.',
               ),
-              const SizedBox(height: 8),
-              for (String checkBox in checkboxValues.keys) ...[
-                CheckboxListTile(
-                  value: checkboxValues[checkBox],
-                  title: Text(checkBox),
-                  onChanged: (value) {
-                    setState(() {
-                      checkboxValues[checkBox] = value ?? false;
-                    });
-                  },
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final checkBox in checkboxValues.keys)
+                    FilterChip(
+                      label: Text(checkBox),
+                      selected: checkboxValues[checkBox] ?? false,
+                      showCheckmark: true,
+                      checkmarkColor: theme.colorScheme.primary,
+                      selectedColor: theme.colorScheme.primary.withValues(
+                        alpha: 0.16,
+                      ),
+                      side: BorderSide(
+                        color: (checkboxValues[checkBox] ?? false)
+                            ? theme.colorScheme.primary
+                            : theme.dividerColor.withValues(alpha: 0.85),
+                      ),
+                      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: (checkboxValues[checkBox] ?? false)
+                            ? theme.colorScheme.primary
+                            : null,
+                        fontWeight: (checkboxValues[checkBox] ?? false)
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                      onSelected: (value) {
+                        setState(() {
+                          checkboxValues[checkBox] = value;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              _buildSectionDivider(context),
+              _buildSectionLabel(
+                context,
+                'Day Notes',
+                'This note is also shared across every reading for this date.',
+              ),
+              TextFormField(
+                controller: noteDayController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: "Day notes",
+                  hintText: "Weather, medication, exercise, triggers...",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                 ),
-              ],
-              const SizedBox(height: 32),
+              ),
             ],
           ),
         ),
