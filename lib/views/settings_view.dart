@@ -220,215 +220,427 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     }
   }
 
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String title,
+    String description,
+  ) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionContent(List<Widget> children) {
+    return Column(children: children);
+  }
+
+  Widget _buildSectionDivider(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.55),
+      ),
+    );
+  }
+
+  Widget _buildIconBadge(BuildContext context, IconData icon) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(icon, color: colorScheme.primary),
+    );
+  }
+
+  Widget _buildInfoRow(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    Widget? trailing,
+  }) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildIconBadge(context, icon),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 12), trailing],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final mutedTextColor = theme.colorScheme.onSurface.withValues(alpha: 0.72);
+
     return Scaffold(
-      appBar: AppBar(title: const Text("Settings")),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
+      appBar: AppBar(title: const Text("Settings"), centerTitle: true),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 24.0),
-                child: Text(
-                  'Theme',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              Text(
+                'Customize reminders, tracking preferences, and data tools.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: mutedTextColor,
+                  height: 1.35,
                 ),
               ),
-              SwitchListTile(
-                value: isDarkMode,
-                onChanged: (value) async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setBool("isDarkMode", value);
-                  ref.read(themeStateNotifier).setIsDarkMode(value);
-                  setState(() {
-                    isDarkMode = value;
-                  });
-                },
-                title: const Text("Dark mode"),
+              const SizedBox(height: 24),
+              _buildSectionLabel(
+                context,
+                'Appearance',
+                'Control how Peak Flow looks while you record daily readings.',
               ),
-              const Padding(
-                padding: EdgeInsets.only(top: 24.0),
-                child: Text(
-                  'Device max capacity',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              _buildSectionContent([
+                _buildInfoRow(
+                  context,
+                  icon: Icons.dark_mode_outlined,
+                  title: 'Dark mode',
+                  description:
+                      'Use the darker theme for lower glare and stronger contrast.',
+                  trailing: Switch.adaptive(
+                    value: isDarkMode,
+                    onChanged: (value) async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool("isDarkMode", value);
+                      ref.read(themeStateNotifier).setIsDarkMode(value);
+                      setState(() {
+                        isDarkMode = value;
+                      });
+                    },
+                  ),
                 ),
+              ]),
+              _buildSectionDivider(context),
+              _buildSectionLabel(
+                context,
+                'Peak Flow Setup',
+                'Keep your personal max value close at hand for daily tracking.',
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: maxController,
-                        keyboardType: TextInputType.number,
+              _buildSectionContent([
+                _buildInfoRow(
+                  context,
+                  icon: Icons.speed_outlined,
+                  title: 'Device max capacity',
+                  description:
+                      'Set the maximum value in liters per minute used throughout the app.',
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final stackVertically = constraints.maxWidth < 390;
+
+                      if (stackVertically) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: maxController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: "max L/min",
+                                hintText: "850",
+                                border: OutlineInputBorder(),
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter(
+                                  RegExp(r'[0-9]'),
+                                  allow: true,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                final value = int.tryParse(maxController.text);
+                                if (value == null) {
+                                  return;
+                                }
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setInt("maxVolume", value);
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                              },
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text("SAVE"),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: maxController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: "max L/min",
+                                hintText: "850",
+                                border: OutlineInputBorder(),
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter(
+                                  RegExp(r'[0-9]'),
+                                  allow: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            height: 56,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                final value = int.tryParse(maxController.text);
+                                if (value == null) {
+                                  return;
+                                }
+                                final prefs =
+                                    await SharedPreferences.getInstance();
+                                await prefs.setInt("maxVolume", value);
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                              },
+                              icon: const Icon(Icons.save_outlined),
+                              label: const Text("SAVE"),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ]),
+              _buildSectionDivider(context),
+              _buildSectionLabel(
+                context,
+                'Reminder Notification',
+                'Manage the daily reminder message and the time it appears.',
+              ),
+              _buildSectionContent([
+                _buildInfoRow(
+                  context,
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Daily reminder',
+                  description:
+                      'Turn scheduled reminders on or off without leaving this screen.',
+                  trailing: Switch.adaptive(
+                    value: hasNotifications,
+                    onChanged: (value) async {
+                      if (hasNotifications) {
+                        await cancelNotifications();
+                      } else {
+                        await setNotification();
+                      }
+                      if (!mounted) {
+                        return;
+                      }
+                      setState(() {
+                        hasNotifications = value;
+                      });
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextFormField(
+                        controller: titleController,
                         decoration: const InputDecoration(
-                          labelText: "max L/min",
-                          hintText: "850",
+                          labelText: "title",
+                          hintText: "Test your Peakflow",
                           border: OutlineInputBorder(),
                         ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter(
-                            RegExp(r'[0-9]'),
-                            allow: true,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: bodyController,
+                        decoration: const InputDecoration(
+                          labelText: "body",
+                          hintText: "Take your peakflow record now!",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Reminder time',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Scheduled for ${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')} each day.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: mutedTextColor,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              FocusScope.of(context).unfocus();
+                              displayTimePicker(context);
+                            },
+                            icon: const Icon(Icons.schedule_outlined),
+                            label: Text(
+                              '${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')}',
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final prefs =
+                                  await SharedPreferences.getInstance();
+                              await prefs.setInt(
+                                "notificationHour",
+                                notificationHour,
+                              );
+                              await prefs.setInt(
+                                "notificationMinute",
+                                notificationMinute,
+                              );
+                              await prefs.setString(
+                                'notificationTitle',
+                                titleController.text,
+                              );
+                              await prefs.setString(
+                                'notificationBody',
+                                bodyController.text,
+                              );
+
+                              if (hasNotifications) {
+                                await setNotification();
+                              }
+                            },
+                            icon: const Icon(Icons.save_outlined),
+                            label: Text(hasNotifications ? 'UPDATE' : 'SAVE'),
                           ),
                         ],
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          final value = int.tryParse(maxController.text);
-                          if (value == null) {
-                            return;
-                          }
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setInt("maxVolume", value);
-                          if (!context.mounted) {
-                            return;
-                          }
-                          FocusScope.of(context).unfocus();
-                        },
-                        child: const Text(
-                          "SAVE",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 24.0),
-                child: Text(
-                  'Reminder Notification',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: TextFormField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: "title",
-                    hintText: "Test your Peakflow",
-                    border: OutlineInputBorder(),
+                    ],
                   ),
                 ),
+              ]),
+              _buildSectionDivider(context),
+              _buildSectionLabel(
+                context,
+                'Data',
+                'Create a portable backup of your readings and notes.',
               ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: TextFormField(
-                  controller: bodyController,
-                  decoration: const InputDecoration(
-                    labelText: "body",
-                    hintText: "Take your peakflow record now!",
-                    border: OutlineInputBorder(),
+              _buildSectionContent([
+                _buildInfoRow(
+                  context,
+                  icon: Icons.file_download_outlined,
+                  title: 'Export as CSV',
+                  description:
+                      'Share a spreadsheet-friendly export of your peak flow history.',
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: ElevatedButton.icon(
+                      onPressed: exportCSV,
+                      icon: const Icon(Icons.ios_share_outlined),
+                      label: const Text("EXPORT CSV"),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        FocusScope.of(context).unfocus();
-                        displayTimePicker(context);
-                      },
-                      child: Text(
-                        "Time: ${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')}",
-                      ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setInt(
-                          "notificationHour",
-                          notificationHour,
-                        );
-                        await prefs.setInt(
-                          "notificationMinute",
-                          notificationMinute,
-                        );
-                        await prefs.setString(
-                          'notificationTitle',
-                          titleController.text,
-                        );
-                        await prefs.setString(
-                          'notificationBody',
-                          bodyController.text,
-                        );
+              ]),
+              _buildSectionDivider(context),
 
-                        if (hasNotifications) {
-                          await setNotification();
-                        }
-                      },
-                      child: Text(
-                        hasNotifications ? 'UPDATE' : 'SAVE',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              SwitchListTile(
-                value: hasNotifications,
-                onChanged: (value) async {
-                  if (hasNotifications) {
-                    await cancelNotifications();
-                  } else {
-                    await setNotification();
-                  }
-                  if (!mounted) {
-                    return;
-                  }
-                  setState(() {
-                    hasNotifications = value;
-                  });
-                },
-                title: const Text("Reminder Notification"),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 24.0),
-                child: Text(
-                  'Export Data',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: ElevatedButton(
-                  onPressed: exportCSV,
-                  child: const Text(
-                    "EXPORT CSV",
-                    style: TextStyle(color: Colors.white),
+              Center(
+                child: IconButton(
+                  icon: Image.asset(
+                    isDarkMode ? 'assets/github.png' : 'assets/github2.png',
                   ),
+                  onPressed: () async {
+                    await launchUrl(
+                      Uri.parse('https://github.com/joscha0/peakflow'),
+                      mode: LaunchMode.externalApplication,
+                    );
+                  },
                 ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 44.0),
-                child: Text(
-                  'Github',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                ),
-              ),
-              IconButton(
-                icon: Image.asset(
-                  isDarkMode ? 'assets/github.png' : 'assets/github2.png',
-                ),
-                onPressed: () async {
-                  await launchUrl(
-                    Uri.parse('https://github.com/joscha0/peakflow'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
               ),
               const SizedBox(height: 10),
-              const Text('Made with ❤️ by @joscha0'),
+              Center(
+                child: Text(
+                  'Made with ❤️ by @joscha0',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: mutedTextColor,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

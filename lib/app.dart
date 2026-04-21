@@ -4,6 +4,24 @@ import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/views/home_view.dart';
 
+class PeakFlowScrollBehavior extends MaterialScrollBehavior {
+  const PeakFlowScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    return const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    return child;
+  }
+}
+
 class App extends ConsumerWidget {
   const App({super.key});
 
@@ -17,6 +35,7 @@ class App extends ConsumerWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: themeState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      scrollBehavior: const PeakFlowScrollBehavior(),
       themeAnimationDuration: Duration.zero,
       builder: (context, child) => ColoredBox(
         color: activeTheme.scaffoldBackgroundColor,
