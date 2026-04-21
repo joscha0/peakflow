@@ -1,5 +1,30 @@
 import 'package:flutter/material.dart';
 
+class BackgroundPageTransitionsBuilder extends PageTransitionsBuilder {
+  const BackgroundPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final wrappedChild = ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: child,
+    );
+
+    final offsetAnimation = Tween<Offset>(
+      begin: const Offset(1, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+
+    return SlideTransition(position: offsetAnimation, child: wrappedChild);
+  }
+}
+
 const Map<String, bool> defaultCheckboxValues = {
   "Cough": false,
   "Cough night": false,
@@ -43,6 +68,22 @@ ThemeData lightTheme = ThemeData(
   useMaterial3: false,
   primaryColor: accent,
   scaffoldBackgroundColor: lightBackground,
+  canvasColor: lightBackground,
+  cardColor: Colors.white,
+  dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
+  bottomSheetTheme: const BottomSheetThemeData(
+    backgroundColor: lightBackground,
+  ),
+  popupMenuTheme: const PopupMenuThemeData(color: Colors.white),
+  pageTransitionsTheme: const PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.iOS: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.linux: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.macOS: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.windows: BackgroundPageTransitionsBuilder(),
+    },
+  ),
   colorScheme: lightColorScheme,
   appBarTheme: const AppBarTheme(
     backgroundColor: lightBackground,
@@ -72,6 +113,19 @@ ThemeData darkTheme = ThemeData(
   useMaterial3: false,
   primaryColor: accent,
   scaffoldBackgroundColor: darkBackground,
+  canvasColor: darkBackground,
+  dialogTheme: const DialogThemeData(backgroundColor: darkBackground),
+  bottomSheetTheme: const BottomSheetThemeData(backgroundColor: darkBackground),
+  popupMenuTheme: PopupMenuThemeData(color: darkCard),
+  pageTransitionsTheme: const PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.iOS: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.linux: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.macOS: BackgroundPageTransitionsBuilder(),
+      TargetPlatform.windows: BackgroundPageTransitionsBuilder(),
+    },
+  ),
   colorScheme: darkColorScheme,
   appBarTheme: const AppBarTheme(
     backgroundColor: darkBackground,
