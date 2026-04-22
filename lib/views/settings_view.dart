@@ -34,6 +34,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   @override
   void initState() {
     super.initState();
+    isDarkMode = ref.read(themeStateNotifier).isDarkMode;
     loadSettings();
   }
 
@@ -54,7 +55,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
     setState(() {
       maxController.text = (prefs.getInt("maxVolume") ?? 850).toString();
-      isDarkMode = prefs.getBool("isDarkMode") ?? true;
+      isDarkMode =
+          prefs.getBool("isDarkMode") ??
+          ref.read(themeStateNotifier).isDarkMode;
       titleController.text =
           prefs.getString("notificationTitle") ?? "Test your Peakflow";
       bodyController.text =
