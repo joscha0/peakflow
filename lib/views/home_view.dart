@@ -88,20 +88,28 @@ class _HomeViewState extends ConsumerState<HomeView> {
               for (int index = 0; index < sections.length; index++) ...[
                 if (index == 0 ||
                     sections[index].year != sections[index - 1].year)
-                  SliverToBoxAdapter(
-                    child: _SectionTitle(
-                      title: sections[index].year.toString(),
-                      fontSize: 28,
-                      topPadding: index == 0 ? 8 : 14,
-                      bottomPadding: 2,
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: _SectionHeaderDelegate(
+                      height: 44,
+                      child: _SectionTitle(
+                        title: sections[index].year.toString(),
+                        fontSize: 28,
+                        topPadding: index == 0 ? 8 : 14,
+                        bottomPadding: 2,
+                      ),
                     ),
                   ),
-                SliverToBoxAdapter(
-                  child: _SectionTitle(
-                    title: DateFormat("MMMM").format(sections[index].month),
-                    fontSize: 18,
-                    topPadding: 8,
-                    bottomPadding: 6,
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SectionHeaderDelegate(
+                    height: 34,
+                    child: _SectionTitle(
+                      title: DateFormat("MMMM").format(sections[index].month),
+                      fontSize: 18,
+                      topPadding: 8,
+                      bottomPadding: 6,
+                    ),
                   ),
                 ),
                 SliverPadding(
@@ -179,6 +187,38 @@ class _HomeSection {
     required this.month,
     required this.entries,
   });
+}
+
+class _SectionHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget child;
+
+  const _SectionHeaderDelegate({required this.height, required this.child});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return SizedBox.expand(
+      child: ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: child,
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SectionHeaderDelegate oldDelegate) {
+    return oldDelegate.height != height || oldDelegate.child != child;
+  }
 }
 
 class _SectionTitle extends StatelessWidget {
