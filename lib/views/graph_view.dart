@@ -15,6 +15,7 @@ class GraphView extends ConsumerStatefulWidget {
 
 class _GraphViewState extends ConsumerState<GraphView> {
   int maxVolume = 850;
+  int colorReferenceMaxVolume = 850;
   List<DayEntry> entries = [];
   List<DayEntry> entriesFiltered = [];
   DateTimeRange? range;
@@ -39,12 +40,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
       }
       if (entriesFiltered[i].morningValue != -1) {
         newSpots.add(
-          FlSpot(index - 0.5, entriesFiltered[i].morningValue.toDouble()),
+          FlSpot(index.toDouble(), entriesFiltered[i].morningValue.toDouble()),
         );
       }
       if (entriesFiltered[i].eveningValue != -1) {
         newSpots.add(
-          FlSpot(index.toDouble(), entriesFiltered[i].eveningValue.toDouble()),
+          FlSpot(index + 0.5, entriesFiltered[i].eveningValue.toDouble()),
         );
       }
     }
@@ -64,7 +65,10 @@ class _GraphViewState extends ConsumerState<GraphView> {
     final loadedEntries = await ref
         .read(entryListProvider.notifier)
         .getEntries();
-    final deviceMaxValue = await getDeviceMaxValue();
+    final values = await Future.wait<int>([
+      getDeviceMaxValue(),
+      getColorReferenceMaxValue(),
+    ]);
     if (!mounted) {
       return;
     }
@@ -74,7 +78,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
       range = loadedEntries.isEmpty
           ? null
           : DateTimeRange(start: loadedEntries.first.date, end: DateTime.now());
-      maxVolume = deviceMaxValue;
+      maxVolume = values[0];
+      colorReferenceMaxVolume = values[1];
     });
     if (loadedEntries.isNotEmpty) {
       loadSpots();
@@ -92,8 +97,108 @@ class _GraphViewState extends ConsumerState<GraphView> {
     loadSpots();
   }
 
+  List<HorizontalRangeAnnotation> _buildZoneAnnotations(ThemeData theme) {
+    final safeReferenceMax = colorReferenceMaxVolume.clamp(1, maxVolume);
+    final redLimit = safeReferenceMax * 0.5;
+    final orangeLimit = safeReferenceMax * 0.8;
+    final zoneAlpha = theme.brightness == Brightness.dark ? 0.26 : 0.34;
+
+    return [
+      HorizontalRangeAnnotation(
+        y1: 0,
+        y2: redLimit,
+        color: const Color(0xFFE64A19).withValues(alpha: zoneAlpha),
+      ),
+      HorizontalRangeAnnotation(
+        y1: redLimit,
+        y2: orangeLimit,
+        color: const Color(0xFFFFB300).withValues(alpha: zoneAlpha),
+      ),
+      HorizontalRangeAnnotation(
+        y1: orangeLimit,
+        y2: safeReferenceMax.toDouble(),
+        color: const Color(0xFF43A047).withValues(alpha: zoneAlpha),
+      ),
+    ];
+  }
+
+  DateTime? get _chartStartDate =>
+      entriesFiltered.isEmpty ? null : entriesFiltered.first.date;
+
+  int get _chartDaySpan {
+    if (entriesFiltered.length < 2) {
+      return 0;
+    }
+    return daysBetween(entriesFiltered.first.date, entriesFiltered.last.date);
+  }
+
+  double get _chartMaxX {
+    if (entriesFiltered.isEmpty) {
+      return 0;
+    }
+
+    final lastDayPosition = _chartDaySpan.toDouble();
+    return entriesFiltered.last.eveningValue != -1
+        ? lastDayPosition + 0.5
+        : lastDayPosition;
+  }
+
+  double get _dateLabelInterval {
+    final span = _chartDaySpan;
+
+    if (span <= 7) {
+      return 1;
+    }
+    if (span <= 14) {
+      return 2;
+    }
+    if (span <= 21) {
+      return 3;
+    }
+    if (span <= 42) {
+      return 7;
+    }
+    if (span <= 84) {
+      return 14;
+    }
+    return 30;
+  }
+
+  Widget _buildBottomDateTitle(
+    BuildContext context,
+    double value,
+    TitleMeta meta,
+  ) {
+    final startDate = _chartStartDate;
+    if (startDate == null || (value - value.roundToDouble()).abs() > 0.001) {
+      return const SizedBox.shrink();
+    }
+
+    final dayOffset = value.round();
+    if (dayOffset < 0 || dayOffset > _chartDaySpan) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final labelDate = startDate.add(Duration(days: dayOffset));
+
+    return SideTitleWidget(
+      meta: meta,
+      space: 8,
+      child: Text(
+        DateFormat('d.M.').format(labelDate),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(title: const Text("Data")),
       body: Column(
@@ -136,6 +241,9 @@ class _GraphViewState extends ConsumerState<GraphView> {
               ),
               child: LineChart(
                 LineChartData(
+                  rangeAnnotations: RangeAnnotations(
+                    horizontalRangeAnnotations: _buildZoneAnnotations(theme),
+                  ),
                   titlesData: FlTitlesData(
                     rightTitles: AxisTitles(
                       sideTitles: SideTitles(showTitles: false),
@@ -144,7 +252,13 @@ class _GraphViewState extends ConsumerState<GraphView> {
                       sideTitles: SideTitles(showTitles: false),
                     ),
                     bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        interval: _dateLabelInterval,
+                        getTitlesWidget: (value, meta) =>
+                            _buildBottomDateTitle(context, value, meta),
+                      ),
                     ),
                     leftTitles: AxisTitles(
                       sideTitles: SideTitles(
@@ -154,8 +268,34 @@ class _GraphViewState extends ConsumerState<GraphView> {
                       ),
                     ),
                   ),
+                  minX: 0,
+                  maxX: _chartMaxX,
                   minY: 0,
                   maxY: maxVolume.toDouble(),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: true,
+                    horizontalInterval: 50,
+                    verticalInterval: 1,
+                    getDrawingHorizontalLine: (value) => FlLine(
+                      color: theme.dividerColor.withValues(
+                        alpha: value % 100 == 0 ? 0.75 : 0.35,
+                      ),
+                      strokeWidth: value % 100 == 0 ? 1.4 : 0.8,
+                    ),
+                    getDrawingVerticalLine: (value) => FlLine(
+                      color: theme.dividerColor.withValues(
+                        alpha: value % 1 == 0 ? 0.5 : 0.22,
+                      ),
+                      strokeWidth: value % 1 == 0 ? 1 : 0.6,
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: Border.all(
+                      color: theme.dividerColor.withValues(alpha: 0.7),
+                    ),
+                  ),
                   lineTouchData: LineTouchData(
                     touchTooltipData: LineTouchTooltipData(
                       fitInsideHorizontally: true,
@@ -219,10 +359,20 @@ class _GraphViewState extends ConsumerState<GraphView> {
                   lineBarsData: [
                     LineChartBarData(
                       spots: spots,
-                      color: Colors.blueAccent.shade700,
+                      color: theme.colorScheme.primary,
                       isCurved: true,
                       curveSmoothness: 0.3,
                       preventCurveOverShooting: true,
+                      barWidth: 2.2,
+                      dotData: FlDotData(
+                        show: true,
+                        getDotPainter: (spot, percent, bar, index) =>
+                            FlDotCrossPainter(
+                              color: theme.colorScheme.primary,
+                              size: 9,
+                              width: 2,
+                            ),
+                      ),
                     ),
                   ],
                 ),
