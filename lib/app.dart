@@ -28,6 +28,8 @@ class App extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeState = ref.watch(themeStateNotifier);
+    final lightTheme = buildLightTheme(themeState.primaryColor);
+    final darkTheme = buildDarkTheme(themeState.primaryColor);
     final activeTheme = themeState.isDarkMode ? darkTheme : lightTheme;
 
     return MaterialApp(

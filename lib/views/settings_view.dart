@@ -34,11 +34,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   int notificationHour = 0;
   int notificationMinute = 0;
   int recordedBestValue = 0;
+  Color selectedPrimaryColor = defaultAccent;
 
   @override
   void initState() {
     super.initState();
-    isDarkMode = ref.read(themeStateNotifier).isDarkMode;
+    final themeState = ref.read(themeStateNotifier);
+    isDarkMode = themeState.isDarkMode;
+    selectedPrimaryColor = themeState.primaryColor;
     loadSettings();
   }
 
@@ -69,6 +72,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       isDarkMode =
           prefs.getBool("isDarkMode") ??
           ref.read(themeStateNotifier).isDarkMode;
+      selectedPrimaryColor = _resolvePrimaryColor(
+        prefs.getInt(primaryColorPreferenceKey) ?? defaultAccent.toARGB32(),
+      );
       useAutomaticMaxValue = prefs.getBool(useAutomaticMaxValueKey) ?? true;
       recordedBestValue = prefs.getInt(bestValueKey) ?? 0;
       titleController.text =
@@ -80,6 +86,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       notificationMinute = prefs.getInt('notificationMinute') ?? 0;
       hasNotifications = notificationsEnabled;
     });
+  }
+
+  Color _resolvePrimaryColor(int colorValue) {
+    for (final color in primaryColorOptions) {
+      if (color.toARGB32() == colorValue) {
+        return color;
+      }
+    }
+    return defaultAccent;
   }
 
   int get automaticReferenceMaxValue {
@@ -449,6 +464,67 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  Widget _buildPrimaryColorPicker(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          for (final color in primaryColorOptions)
+            GestureDetector(
+              onTap: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setInt(primaryColorPreferenceKey, color.toARGB32());
+                ref.read(themeStateNotifier).setPrimaryColor(color);
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  selectedPrimaryColor = color;
+                });
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  border: Border.all(
+                    color: selectedPrimaryColor.toARGB32() == color.toARGB32()
+                        ? theme.colorScheme.onSurface
+                        : color.withValues(alpha: 0.18),
+                    width: selectedPrimaryColor.toARGB32() == color.toARGB32()
+                        ? 3
+                        : 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.26),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: selectedPrimaryColor.toARGB32() == color.toARGB32()
+                    ? Icon(
+                        Icons.check,
+                        size: 18,
+                        color: color.computeLuminance() > 0.45
+                            ? Colors.black
+                            : Colors.white,
+                      )
+                    : null,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -494,6 +570,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     },
                   ),
                 ),
+                _buildInfoRow(
+                  context,
+                  icon: Icons.palette_outlined,
+                  title: 'Primary color',
+                  description:
+                      'Pick the accent color used for buttons, highlights, and controls.',
+                ),
+                _buildPrimaryColorPicker(context),
               ]),
               _buildSectionDivider(context),
               _buildSectionLabel(
