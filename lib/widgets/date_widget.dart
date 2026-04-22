@@ -6,12 +6,12 @@ import 'package:peakflow/views/day_view.dart';
 
 class DateWidget extends StatelessWidget {
   final DayEntry dayEntry;
-  final int bestValue;
+  final int referenceMaxValue;
 
   const DateWidget({
     super.key,
     required this.dayEntry,
-    required this.bestValue,
+    required this.referenceMaxValue,
   });
 
   @override
@@ -20,9 +20,7 @@ class DateWidget extends StatelessWidget {
       child: InkWell(
         onTap: (() {
           Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => DayView(dayEntry: dayEntry, bestValue: bestValue),
-            ),
+            MaterialPageRoute(builder: (_) => DayView(dayEntry: dayEntry)),
           );
         }),
         child: Padding(
@@ -45,12 +43,18 @@ class DateWidget extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.light_mode,
-                          color: getColor(dayEntry.morningValue, bestValue),
+                          color: getColor(
+                            dayEntry.morningValue,
+                            referenceMaxValue,
+                          ),
                         ),
                         Text(
                           dayEntry.morningValue.toString(),
                           style: TextStyle(
-                            color: getColor(dayEntry.morningValue, bestValue),
+                            color: getColor(
+                              dayEntry.morningValue,
+                              referenceMaxValue,
+                            ),
                           ),
                         ),
                       ],
@@ -61,12 +65,18 @@ class DateWidget extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.nights_stay,
-                          color: getColor(dayEntry.eveningValue, bestValue),
+                          color: getColor(
+                            dayEntry.eveningValue,
+                            referenceMaxValue,
+                          ),
                         ),
                         Text(
                           dayEntry.eveningValue.toString(),
                           style: TextStyle(
-                            color: getColor(dayEntry.eveningValue, bestValue),
+                            color: getColor(
+                              dayEntry.eveningValue,
+                              referenceMaxValue,
+                            ),
                           ),
                         ),
                       ],

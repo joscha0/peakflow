@@ -189,7 +189,6 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
             noteDayController.text,
             checkboxValues,
           );
-          int bestValue = await getBestValue();
           ref.read(entryListProvider.notifier).loadEntries();
           if (!context.mounted) {
             return;
@@ -199,7 +198,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
             context,
             PageRouteBuilder(
               pageBuilder: (context, animation1, animation2) =>
-                  DayView(dayEntry: newEntry, bestValue: bestValue),
+                  DayView(dayEntry: newEntry),
               transitionDuration: const Duration(seconds: 0),
             ),
           );

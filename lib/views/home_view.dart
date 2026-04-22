@@ -15,7 +15,7 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
-  int bestValue = 0;
+  int referenceMaxValue = defaultMaxVolume;
   bool sortUp = true;
 
   @override
@@ -25,13 +25,13 @@ class _HomeViewState extends ConsumerState<HomeView> {
   }
 
   Future<void> init() async {
-    final loadedBestValue = await getBestValue();
+    final loadedReferenceMaxValue = await getColorReferenceMaxValue();
     final loadedSortUp = await getSortValue();
     if (!mounted) {
       return;
     }
     setState(() {
-      bestValue = loadedBestValue;
+      referenceMaxValue = loadedReferenceMaxValue;
       sortUp = loadedSortUp;
     });
     ref.read(entryListProvider.notifier).loadEntries();
@@ -58,18 +58,20 @@ class _HomeViewState extends ConsumerState<HomeView> {
             icon: Icon(sortUp ? Icons.arrow_upward : Icons.arrow_downward),
           ),
           IconButton(
-            onPressed: () {
-              Navigator.of(
+            onPressed: () async {
+              await Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const GraphView()));
+              await init();
             },
             icon: const Icon(Icons.bar_chart),
           ),
           IconButton(
-            onPressed: () {
-              Navigator.of(
+            onPressed: () async {
+              await Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const SettingsView()));
+              await init();
             },
             icon: const Icon(Icons.settings),
           ),
@@ -83,14 +85,18 @@ class _HomeViewState extends ConsumerState<HomeView> {
         ),
         itemCount: entries.length,
         itemBuilder: (BuildContext ctx, index) {
-          return DateWidget(dayEntry: entries[index], bestValue: bestValue);
+          return DateWidget(
+            dayEntry: entries[index],
+            referenceMaxValue: referenceMaxValue,
+          );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.of(
+        onPressed: () async {
+          await Navigator.of(
             context,
           ).push(MaterialPageRoute(builder: (_) => const AddView()));
+          await init();
         },
         child: const Icon(Icons.add),
       ),

@@ -11,10 +11,9 @@ import 'package:peakflow/views/edit_day_view.dart';
 import 'package:peakflow/views/edit_reading_view.dart';
 
 class DayView extends ConsumerStatefulWidget {
-  const DayView({super.key, required this.dayEntry, required this.bestValue});
+  const DayView({super.key, required this.dayEntry});
 
   final DayEntry dayEntry;
-  final int bestValue;
 
   @override
   ConsumerState<DayView> createState() => _DayViewState();
@@ -22,15 +21,27 @@ class DayView extends ConsumerStatefulWidget {
 
 class _DayViewState extends ConsumerState<DayView> {
   List<String> symptoms = [];
+  int referenceMaxValue = defaultMaxVolume;
 
   @override
   void initState() {
+    super.initState();
+    _loadReferenceMaxValue();
     for (String symptom in widget.dayEntry.checkboxValues.keys) {
       if (widget.dayEntry.checkboxValues[symptom] ?? false) {
         symptoms.add(symptom);
       }
     }
-    super.initState();
+  }
+
+  Future<void> _loadReferenceMaxValue() async {
+    final loadedReferenceMaxValue = await getColorReferenceMaxValue();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      referenceMaxValue = loadedReferenceMaxValue;
+    });
   }
 
   @override
@@ -168,7 +179,7 @@ class _DayViewState extends ConsumerState<DayView> {
                                         : Icons.nights_stay,
                                     color: getColor(
                                       reading.value,
-                                      widget.bestValue,
+                                      referenceMaxValue,
                                     ),
                                   ),
                                   Text(
@@ -177,7 +188,7 @@ class _DayViewState extends ConsumerState<DayView> {
                                       fontSize: 24,
                                       color: getColor(
                                         reading.value,
-                                        widget.bestValue,
+                                        referenceMaxValue,
                                       ),
                                     ),
                                   ),
@@ -218,6 +229,7 @@ class _DayViewState extends ConsumerState<DayView> {
                                       widget.dayEntry.date,
                                       widget.dayEntry.readings.indexOf(reading),
                                     );
+                                    await _loadReferenceMaxValue();
                                     widget.dayEntry.readings.remove(reading);
                                     ref
                                         .read(entryListProvider.notifier)

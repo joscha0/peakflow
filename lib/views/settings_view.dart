@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -22,14 +23,17 @@ class SettingsView extends ConsumerStatefulWidget {
 }
 
 class _SettingsViewState extends ConsumerState<SettingsView> {
-  final maxController = TextEditingController();
+  final deviceMaxController = TextEditingController();
+  final colorMaxController = TextEditingController();
   final titleController = TextEditingController();
   final bodyController = TextEditingController();
 
   bool isDarkMode = true;
   bool hasNotifications = false;
+  bool useAutomaticMaxValue = true;
   int notificationHour = 0;
   int notificationMinute = 0;
+  int recordedBestValue = 0;
 
   @override
   void initState() {
@@ -40,7 +44,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
   @override
   void dispose() {
-    maxController.dispose();
+    deviceMaxController.dispose();
+    colorMaxController.dispose();
     titleController.dispose();
     bodyController.dispose();
     super.dispose();
@@ -54,10 +59,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     }
 
     setState(() {
-      maxController.text = (prefs.getInt("maxVolume") ?? 850).toString();
+      deviceMaxController.text =
+          (prefs.getInt(maxVolumeKey) ?? defaultMaxVolume).toString();
+      colorMaxController.text =
+          (prefs.getInt(manualColorReferenceMaxValueKey) ??
+                  prefs.getInt(maxVolumeKey) ??
+                  defaultMaxVolume)
+              .toString();
       isDarkMode =
           prefs.getBool("isDarkMode") ??
           ref.read(themeStateNotifier).isDarkMode;
+      useAutomaticMaxValue = prefs.getBool(useAutomaticMaxValueKey) ?? true;
+      recordedBestValue = prefs.getInt(bestValueKey) ?? 0;
       titleController.text =
           prefs.getString("notificationTitle") ?? "Test your Peakflow";
       bodyController.text =
@@ -66,6 +79,46 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       notificationHour = prefs.getInt('notificationHour') ?? 0;
       notificationMinute = prefs.getInt('notificationMinute') ?? 0;
       hasNotifications = notificationsEnabled;
+    });
+  }
+
+  int get automaticReferenceMaxValue {
+    final deviceMaxValue =
+        int.tryParse(deviceMaxController.text.trim()) ?? defaultMaxVolume;
+    return recordedBestValue > 0 ? recordedBestValue : deviceMaxValue;
+  }
+
+  Future<void> _saveDeviceMaxValue() async {
+    final value = int.tryParse(deviceMaxController.text.trim());
+    if (value == null || value <= 0) {
+      return;
+    }
+
+    await setDeviceMaxValue(value);
+    if (!mounted) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      deviceMaxController.text = value.toString();
+    });
+  }
+
+  Future<void> _saveManualColorMaxValue() async {
+    final value = int.tryParse(colorMaxController.text.trim());
+    if (value == null || value <= 0) {
+      return;
+    }
+
+    await setManualColorReferenceMaxValue(value);
+    if (!mounted) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      colorMaxController.text = value.toString();
     });
   }
 
@@ -325,6 +378,77 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  Widget _buildValueEditor(
+    BuildContext context, {
+    required TextEditingController controller,
+    required String labelText,
+    required VoidCallback onSave,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stackVertically = constraints.maxWidth < 390;
+
+          if (stackVertically) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextFormField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: labelText,
+                    hintText: "$defaultMaxVolume",
+                    border: OutlineInputBorder(),
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter(RegExp(r'[0-9]'), allow: true),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  onPressed: onSave,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text("SAVE"),
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: labelText,
+                    hintText: "$defaultMaxVolume",
+                    border: OutlineInputBorder(),
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter(RegExp(r'[0-9]'), allow: true),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 56,
+                child: ElevatedButton.icon(
+                  onPressed: onSave,
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text("SAVE"),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -375,7 +499,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               _buildSectionLabel(
                 context,
                 'Peak Flow Setup',
-                'Keep your personal max value close at hand for daily tracking.',
+                'Set the device limit separately from the max used to calculate your color zones.',
               ),
               _buildSectionContent([
                 _buildInfoRow(
@@ -383,101 +507,56 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   icon: Icons.speed_outlined,
                   title: 'Device max capacity',
                   description:
-                      'Set the maximum value in liters per minute used throughout the app.',
+                      'This is the maximum value your device can measure and the upper limit used for input and graphs.',
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final stackVertically = constraints.maxWidth < 390;
-
-                      if (stackVertically) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextFormField(
-                              controller: maxController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: "max L/min",
-                                hintText: "850",
-                                border: OutlineInputBorder(),
-                              ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter(
-                                  RegExp(r'[0-9]'),
-                                  allow: true,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            ElevatedButton.icon(
-                              onPressed: () async {
-                                final value = int.tryParse(maxController.text);
-                                if (value == null) {
-                                  return;
-                                }
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setInt("maxVolume", value);
-                                if (!context.mounted) {
-                                  return;
-                                }
-                                FocusScope.of(context).unfocus();
-                              },
-                              icon: const Icon(Icons.save_outlined),
-                              label: const Text("SAVE"),
-                            ),
-                          ],
-                        );
+                _buildValueEditor(
+                  context,
+                  controller: deviceMaxController,
+                  labelText: 'device max L/min',
+                  onSave: _saveDeviceMaxValue,
+                ),
+                _buildInfoRow(
+                  context,
+                  icon: Icons.monitor_heart_outlined,
+                  title: useAutomaticMaxValue ? 'Automatic max' : 'Manual max',
+                  description:
+                      'Auto uses your highest saved reading for the green, orange, and red zones. Turn it off to enter your own max.',
+                  trailing: Switch.adaptive(
+                    value: useAutomaticMaxValue,
+                    onChanged: (value) async {
+                      await setUseAutomaticMaxValue(value);
+                      if (!mounted) {
+                        return;
                       }
-
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: maxController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: "max L/min",
-                                hintText: "850",
-                                border: OutlineInputBorder(),
-                              ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter(
-                                  RegExp(r'[0-9]'),
-                                  allow: true,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            height: 56,
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final value = int.tryParse(maxController.text);
-                                if (value == null) {
-                                  return;
-                                }
-                                final prefs =
-                                    await SharedPreferences.getInstance();
-                                await prefs.setInt("maxVolume", value);
-                                if (!context.mounted) {
-                                  return;
-                                }
-                                FocusScope.of(context).unfocus();
-                              },
-                              icon: const Icon(Icons.save_outlined),
-                              label: const Text("SAVE"),
-                            ),
-                          ),
-                        ],
-                      );
+                      setState(() {
+                        useAutomaticMaxValue = value;
+                      });
                     },
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    useAutomaticMaxValue
+                        ? recordedBestValue > 0
+                              ? 'Current automatic max: $automaticReferenceMaxValue L/min'
+                              : 'Automatic mode will use your best saved reading once you have one. Until then it falls back to $automaticReferenceMaxValue L/min.'
+                        : 'Manual mode uses the value below as the color reference.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.68,
+                      ),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+                if (!useAutomaticMaxValue)
+                  _buildValueEditor(
+                    context,
+                    controller: colorMaxController,
+                    labelText: 'manual color max L/min',
+                    onSave: _saveManualColorMaxValue,
+                  ),
               ]),
               _buildSectionDivider(context),
               _buildSectionLabel(
