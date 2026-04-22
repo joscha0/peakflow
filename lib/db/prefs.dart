@@ -254,7 +254,7 @@ Future<void> _migrateReadingsToDriftIfNeeded(AppDatabase database) async {
     return;
   }
 
-  final sortedDates = List<String>.from(dateList)..sort();
+  final sortedDates = {...dateList}.toList()..sort();
   final entries = <DayEntry>[];
   for (final dateKey in sortedDates) {
     final data = prefs.getString(dateKey);
@@ -279,6 +279,13 @@ Future<void> _storeBestValueAfterWrite(
 }
 
 @visibleForTesting
-void debugUseDatabase(AppDatabase? database) {
-  _databaseFuture = database == null ? null : Future.value(database);
+void debugUseDatabase(AppDatabase? database, {bool runMigration = false}) {
+  _databaseFuture = database == null
+      ? null
+      : Future(() async {
+          if (runMigration) {
+            await _migrateReadingsToDriftIfNeeded(database);
+          }
+          return database;
+        });
 }
