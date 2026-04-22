@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,11 +9,13 @@ class PeakFlowValueSelector extends StatefulWidget {
     required this.value,
     required this.maxVolume,
     required this.onChanged,
+    this.referenceMaxVolume,
     this.onDraggingChanged,
   });
 
   final double value;
   final int maxVolume;
+  final int? referenceMaxVolume;
   final ValueChanged<double> onChanged;
   final ValueChanged<bool>? onDraggingChanged;
 
@@ -25,6 +26,11 @@ class PeakFlowValueSelector extends StatefulWidget {
 class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
   final valueController = TextEditingController();
   bool isDragging = false;
+
+  int get _effectiveReferenceMaxVolume {
+    final reference = widget.referenceMaxVolume ?? widget.maxVolume;
+    return reference.clamp(1, widget.maxVolume);
+  }
 
   @override
   void initState() {
@@ -73,35 +79,19 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     _syncValueText(normalizedValue.round());
   }
 
-  bool _isPositionOnSelectorRing(Offset localPosition, Size size) {
-    final strokeWidth = size.width * 0.09;
-    final center = Offset(size.width / 2, size.height * 0.94);
-    final radius = (size.width - strokeWidth) / 2.4;
-    final dx = localPosition.dx - center.dx;
-    final dy = localPosition.dy - center.dy;
-    final distance = math.sqrt((dx * dx) + (dy * dy));
-
-    return distance >= radius - strokeWidth && distance <= radius + strokeWidth;
+  bool _isPositionOnSelectorLine(Offset localPosition, Size size) {
+    final geometry = _PeakFlowMeterGeometry.fromSize(size);
+    return geometry.interactionRect.contains(localPosition);
   }
 
   void _updateValueFromPosition(Offset localPosition, Size size) {
-    if (!_isPositionOnSelectorRing(localPosition, size)) {
-      return;
-    }
-
-    final center = Offset(size.width / 2, size.height * 0.94);
-    final dx = localPosition.dx - center.dx;
-    final dy = localPosition.dy - center.dy;
-    var angle = math.atan2(dy, dx);
-    if (angle < 0) {
-      angle += math.pi * 2;
-    }
-
-    if (angle < math.pi) {
-      angle = localPosition.dx < center.dx ? math.pi : math.pi * 2;
-    }
-
-    final progress = (angle - math.pi) / math.pi;
+    final geometry = _PeakFlowMeterGeometry.fromSize(size);
+    final clampedDx = localPosition.dx.clamp(
+      geometry.trackRect.left,
+      geometry.trackRect.right,
+    );
+    final progress =
+        (clampedDx - geometry.trackRect.left) / geometry.trackRect.width;
     _updateValue(progress * widget.maxVolume);
   }
 
@@ -143,127 +133,129 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     final theme = Theme.of(context);
     final progress = widget.maxVolume == 0
         ? 0.0
-        : widget.value / widget.maxVolume;
+        : (widget.value / widget.maxVolume).clamp(0.0, 1.0);
+    final referenceMaxVolume = _effectiveReferenceMaxVolume;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final selectorSize = math.min(constraints.maxWidth, 320.0);
-        final selectorHeight = selectorSize * 0.6;
-        final selectorCanvasSize = Size(selectorSize, selectorHeight);
+        final meterWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : 440.0;
+        final meterHeight = meterWidth * 0.35;
+        final meterSize = Size(meterWidth, meterHeight);
 
         return Center(
-          child: SizedBox(
-            width: selectorSize,
-            child: Stack(
-              children: [
-                Listener(
-                  behavior: HitTestBehavior.opaque,
-                  onPointerDown: (event) {
-                    if (!_isPositionOnSelectorRing(
-                      event.localPosition,
-                      selectorCanvasSize,
-                    )) {
-                      return;
-                    }
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (event) {
+                  if (!_isPositionOnSelectorLine(
+                    event.localPosition,
+                    meterSize,
+                  )) {
+                    return;
+                  }
 
-                    _setDragging(true);
-                    _updateValueFromPosition(
-                      event.localPosition,
-                      selectorCanvasSize,
-                    );
-                  },
-                  onPointerMove: (event) {
-                    if (!isDragging) {
-                      return;
-                    }
+                  _setDragging(true);
+                  _updateValueFromPosition(event.localPosition, meterSize);
+                },
+                onPointerMove: (event) {
+                  if (!isDragging) {
+                    return;
+                  }
 
-                    _updateValueFromPosition(
-                      event.localPosition,
-                      selectorCanvasSize,
-                    );
-                  },
-                  onPointerUp: (_) {
-                    _setDragging(false);
-                  },
-                  onPointerCancel: (_) {
-                    _setDragging(false);
-                  },
-                  child: SizedBox(
-                    width: selectorSize,
-                    height: selectorHeight,
-                    child: CustomPaint(
-                      size: selectorCanvasSize,
-                      painter: _HalfCircleSelectorPainter(
-                        maxVolume: widget.maxVolume,
-                        progress: progress,
-                        activeColor: theme.colorScheme.primary,
-                        trackColor: theme.dividerColor.withValues(alpha: 0.18),
-                        tickColor: theme.dividerColor.withValues(alpha: 0.45),
-                        textColor: theme.colorScheme.onSurface.withValues(
-                          alpha: 0.78,
-                        ),
+                  _updateValueFromPosition(event.localPosition, meterSize);
+                },
+                onPointerUp: (_) {
+                  _setDragging(false);
+                },
+                onPointerCancel: (_) {
+                  _setDragging(false);
+                },
+                child: SizedBox(
+                  width: meterWidth,
+                  height: meterHeight,
+                  child: CustomPaint(
+                    size: meterSize,
+                    painter: _PeakFlowMeterPainter(
+                      maxVolume: widget.maxVolume,
+                      referenceMaxVolume: referenceMaxVolume,
+                      progress: progress,
+                      activeColor: theme.colorScheme.primary,
+                      shellColor: theme.colorScheme.onSurface.withValues(
+                        alpha: theme.brightness == Brightness.dark ? 0.14 : 0.1,
                       ),
+                      faceColor: theme.colorScheme.onSurface.withValues(
+                        alpha: theme.brightness == Brightness.dark
+                            ? 0.09
+                            : 0.06,
+                      ),
+                      meterMarkColor: theme.colorScheme.primary.withValues(
+                        alpha: 0.36,
+                      ),
+                      textColor: theme.colorScheme.onSurface.withValues(
+                        alpha: 0.62,
+                      ),
+                      channelColor: theme.dividerColor.withValues(alpha: 0.4),
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  child: Align(
-                    alignment: const Alignment(0, 1),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 140,
-                          child: TextFormField(
-                            controller: valueController,
-                            textAlign: TextAlign.center,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9]'),
-                              ),
-                            ],
-                            style: theme.textTheme.displaySmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onChanged: _handleValueTextChanged,
-                            onTapOutside: (_) {
-                              FocusScope.of(context).unfocus();
-                              _normalizeTypedValue();
-                            },
-                            onFieldSubmitted: (_) {
-                              _normalizeTypedValue();
-                            },
-                          ),
-                        ),
-                        Text(
-                          'L/min',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.7,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Drag the arc or type a value',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.62,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              ),
+              const SizedBox(height: 0),
+              SizedBox(
+                width: 170,
+                child: TextFormField(
+                  controller: valueController,
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
+                  ],
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  onChanged: _handleValueTextChanged,
+                  onTapOutside: (_) {
+                    FocusScope.of(context).unfocus();
+                    _normalizeTypedValue();
+                  },
+                  onFieldSubmitted: (_) {
+                    _normalizeTypedValue();
+                  },
                 ),
-              ],
-            ),
+              ),
+              Text(
+                'L/min',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _ZoneChip(label: '<50%', color: const Color(0xFFC62828)),
+                  _ZoneChip(label: '50-79%', color: const Color(0xFFF9A825)),
+                  _ZoneChip(label: '80-100%', color: const Color(0xFF2E7D32)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Drag the line or type a value',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -271,113 +263,357 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
   }
 }
 
-class _HalfCircleSelectorPainter extends CustomPainter {
-  const _HalfCircleSelectorPainter({
+class _ZoneChip extends StatelessWidget {
+  const _ZoneChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _PeakFlowMeterGeometry {
+  const _PeakFlowMeterGeometry({
+    required this.bodyRect,
+    required this.faceRect,
+    required this.mouthpieceRect,
+    required this.trackRect,
+    required this.selectorY,
+    required this.interactionRect,
+    required this.zoneRect,
+    required this.scaleTopY,
+    required this.scaleBottomY,
+    required this.labelY,
+  });
+
+  final Rect bodyRect;
+  final RRect faceRect;
+  final RRect mouthpieceRect;
+  final Rect trackRect;
+  final double selectorY;
+  final Rect interactionRect;
+  final Rect zoneRect;
+  final double scaleTopY;
+  final double scaleBottomY;
+  final double labelY;
+
+  static _PeakFlowMeterGeometry fromSize(Size size) {
+    final outerPadding = size.width * 0.025;
+    final bodyHeight = size.height * 0.66;
+    final bodyTop = size.height * 0.04;
+    final mouthpieceWidth = bodyHeight * 0.24;
+    final bodyLeft = outerPadding + (mouthpieceWidth * 0.55);
+    final bodyWidth = size.width - bodyLeft - outerPadding;
+    final bodyRect = Rect.fromLTWH(bodyLeft, bodyTop, bodyWidth, bodyHeight);
+
+    final faceInsetX = bodyWidth * 0.052;
+    final faceInsetTop = bodyHeight * 0.16;
+    final faceInsetBottom = bodyHeight * 0.16;
+    final faceRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        bodyRect.left + faceInsetX,
+        bodyRect.top + faceInsetTop,
+        bodyWidth - (faceInsetX * 2),
+        bodyHeight - faceInsetTop - faceInsetBottom,
+      ),
+      Radius.circular(bodyHeight * 0.18),
+    );
+
+    final mouthpieceRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(
+        center: Offset(bodyRect.left - bodyHeight * 0.11, bodyRect.center.dy),
+        width: mouthpieceWidth,
+        height: bodyHeight * 0.22,
+      ),
+      Radius.circular(bodyHeight * 0.07),
+    );
+
+    final selectorY = faceRect.top + (faceRect.height * 0.48);
+    final trackRect = Rect.fromLTWH(
+      faceRect.left + (faceRect.width * 0.05),
+      selectorY - (faceRect.height * 0.105),
+      faceRect.width * 0.9,
+      faceRect.height * 0.21,
+    );
+
+    final interactionRect = Rect.fromLTWH(
+      trackRect.left - 14,
+      trackRect.top - bodyHeight * 0.4,
+      trackRect.width + 28,
+      trackRect.height + bodyHeight * 0.8,
+    );
+
+    final zoneRect = Rect.fromLTWH(
+      trackRect.left,
+      trackRect.top - faceRect.height * 0.23,
+      trackRect.width,
+      faceRect.height * 0.15,
+    );
+
+    final scaleTopY = trackRect.bottom + faceRect.height * 0.08;
+    final scaleBottomY = trackRect.bottom + faceRect.height * 0.24;
+    final labelY = scaleBottomY + faceRect.height * 0.22;
+
+    return _PeakFlowMeterGeometry(
+      bodyRect: bodyRect,
+      faceRect: faceRect,
+      mouthpieceRect: mouthpieceRect,
+      trackRect: trackRect,
+      selectorY: selectorY,
+      interactionRect: interactionRect,
+      zoneRect: zoneRect,
+      scaleTopY: scaleTopY,
+      scaleBottomY: scaleBottomY,
+      labelY: labelY,
+    );
+  }
+}
+
+class _PeakFlowMeterPainter extends CustomPainter {
+  const _PeakFlowMeterPainter({
     required this.maxVolume,
+    required this.referenceMaxVolume,
     required this.progress,
     required this.activeColor,
-    required this.trackColor,
-    required this.tickColor,
+    required this.shellColor,
+    required this.faceColor,
+    required this.meterMarkColor,
     required this.textColor,
+    required this.channelColor,
   });
 
   final int maxVolume;
+  final int referenceMaxVolume;
   final double progress;
   final Color activeColor;
-  final Color trackColor;
-  final Color tickColor;
+  final Color shellColor;
+  final Color faceColor;
+  final Color meterMarkColor;
   final Color textColor;
+  final Color channelColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = size.center(Offset.zero);
-    final strokeWidth = size.width * 0.09;
-    final centerPoint = Offset(center.dx, size.height * 0.94);
-    final radius = (size.width - strokeWidth) / 2.4;
-    final rect = Rect.fromCircle(center: centerPoint, radius: radius);
+    final geometry = _PeakFlowMeterGeometry.fromSize(size);
+    final knobX = _positionForValue(progress * maxVolume, geometry);
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.08)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    final shellPaint = Paint()..color = shellColor;
+    final facePaint = Paint()..color = faceColor;
 
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    final activePaint = Paint()
-      ..color = activeColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round;
-
-    final tickPaint = Paint()
-      ..color = tickColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    final labelStyle = TextStyle(
-      color: textColor,
-      fontSize: 11,
-      fontWeight: FontWeight.w600,
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        geometry.bodyRect.shift(const Offset(0, 5)),
+        const Radius.circular(24),
+      ),
+      shadowPaint,
     );
 
-    canvas.drawArc(rect, math.pi, math.pi, false, trackPaint);
-    canvas.drawArc(rect, math.pi, math.pi * progress, false, activePaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(geometry.bodyRect, const Radius.circular(24)),
+      shellPaint,
+    );
+    canvas.drawRRect(geometry.mouthpieceRect, Paint()..color = shellColor);
+    canvas.drawRRect(geometry.faceRect, facePaint);
 
-    for (var i = 0; i <= 12; i++) {
-      final angle = math.pi + (i / 12) * math.pi;
-      final start = Offset(
-        centerPoint.dx + math.cos(angle) * (radius + strokeWidth * 0.72),
-        centerPoint.dy + math.sin(angle) * (radius + strokeWidth * 0.72),
+    _paintZones(canvas, geometry);
+    _paintTrack(canvas, geometry, knobX);
+    _paintScale(canvas, geometry);
+  }
+
+  void _paintZones(Canvas canvas, _PeakFlowMeterGeometry geometry) {
+    final redRight = _positionForValue(referenceMaxVolume * 0.5, geometry);
+    final orangeRight = _positionForValue(referenceMaxVolume * 0.8, geometry);
+
+    final redRect = Rect.fromLTRB(
+      geometry.zoneRect.left,
+      geometry.zoneRect.top,
+      redRight,
+      geometry.zoneRect.bottom,
+    );
+    final orangeRect = Rect.fromLTRB(
+      redRight + 4,
+      geometry.zoneRect.top,
+      orangeRight,
+      geometry.zoneRect.bottom,
+    );
+    final greenRect = Rect.fromLTRB(
+      orangeRight + 4,
+      geometry.zoneRect.top,
+      geometry.zoneRect.right,
+      geometry.zoneRect.bottom,
+    );
+
+    if (redRect.width > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(redRect, const Radius.circular(8)),
+        Paint()..color = const Color(0xFFC62828).withValues(alpha: 0.35),
       );
-      final end = Offset(
-        centerPoint.dx + math.cos(angle) * (radius + strokeWidth * 0.98),
-        centerPoint.dy + math.sin(angle) * (radius + strokeWidth * 0.98),
-      );
-      canvas.drawLine(start, end, tickPaint);
-
-      if (i.isEven) {
-        final labelValue = (((maxVolume / 12) * i) / 10).round() * 10;
-        final textPainter = TextPainter(
-          text: TextSpan(text: labelValue.toString(), style: labelStyle),
-          textDirection: ui.TextDirection.ltr,
-        )..layout();
-
-        final labelOffset = Offset(
-          centerPoint.dx +
-              math.cos(angle) * (radius + strokeWidth * 1.85) -
-              (textPainter.width / 2),
-          centerPoint.dy +
-              math.sin(angle) * (radius + strokeWidth * 1.85) -
-              (textPainter.height / 2),
-        );
-        textPainter.paint(canvas, labelOffset);
-      }
     }
+    if (orangeRect.width > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(orangeRect, const Radius.circular(8)),
+        Paint()..color = const Color(0xFFEF6C00).withValues(alpha: 0.35),
+      );
+    }
+    if (greenRect.width > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(greenRect, const Radius.circular(8)),
+        Paint()..color = const Color(0xFF2E7D32).withValues(alpha: 0.35),
+      );
+    }
+  }
 
-    final knobAngle = math.pi + (math.pi * progress);
-    final knobCenter = Offset(
-      centerPoint.dx + math.cos(knobAngle) * radius,
-      centerPoint.dy + math.sin(knobAngle) * radius,
+  void _paintTrack(
+    Canvas canvas,
+    _PeakFlowMeterGeometry geometry,
+    double knobX,
+  ) {
+    final channelRRect = RRect.fromRectAndRadius(
+      geometry.trackRect,
+      Radius.circular(geometry.trackRect.height),
+    );
+    final selectorGlowRect = Rect.fromCenter(
+      center: geometry.trackRect.center,
+      width: geometry.trackRect.width + 20,
+      height: geometry.trackRect.height * 4.6,
     );
 
-    canvas.drawCircle(
-      knobCenter,
-      strokeWidth * 0.44,
+    canvas.drawRRect(channelRRect, Paint()..color = channelColor);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTRB(
+          geometry.trackRect.left,
+          geometry.trackRect.top,
+          knobX,
+          geometry.trackRect.bottom,
+        ),
+        Radius.circular(geometry.trackRect.height),
+      ),
+      Paint()..color = activeColor.withValues(alpha: 0.14),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        selectorGlowRect,
+        Radius.circular(selectorGlowRect.height),
+      ),
+      Paint()..color = activeColor.withValues(alpha: 0.08),
+    );
+
+    canvas.drawLine(
+      Offset(knobX, geometry.trackRect.top - 22),
+      Offset(knobX, geometry.trackRect.bottom + 22),
+      Paint()
+        ..color = activeColor
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round,
+    );
+
+    final handleRect = Rect.fromCenter(
+      center: Offset(knobX, geometry.selectorY),
+      width: geometry.trackRect.height * 1.55,
+      height: geometry.trackRect.height * 4.3,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        handleRect,
+        Radius.circular(handleRect.height / 2),
+      ),
       Paint()..color = activeColor,
     );
-    canvas.drawCircle(
-      knobCenter,
-      strokeWidth * 0.2,
-      Paint()..color = Colors.white,
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        handleRect.deflate(handleRect.height * 0.22),
+        Radius.circular(handleRect.height / 2),
+      ),
+      Paint()..color = Colors.white.withValues(alpha: 0.86),
     );
   }
 
+  void _paintScale(Canvas canvas, _PeakFlowMeterGeometry geometry) {
+    final tickPaint = Paint()
+      ..color = meterMarkColor
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    final labelStyle = TextStyle(
+      color: textColor,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+    );
+    final labelStep = _labelStep(maxVolume);
+
+    for (var value = 0; value <= maxVolume; value += 10) {
+      final x = _positionForValue(value.toDouble(), geometry);
+      final isMajorTick = value % labelStep == 0;
+      final startY = geometry.scaleTopY;
+      final endY = isMajorTick ? geometry.scaleBottomY : geometry.scaleTopY + 8;
+
+      canvas.drawLine(Offset(x, startY), Offset(x, endY), tickPaint);
+
+      if (isMajorTick && value > 0) {
+        final textPainter = TextPainter(
+          text: TextSpan(text: value.toString(), style: labelStyle),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        canvas.save();
+        canvas.translate(x, geometry.labelY);
+        canvas.rotate(math.pi / 2);
+        textPainter.paint(
+          canvas,
+          Offset(-textPainter.width / 2, -textPainter.height / 2),
+        );
+        canvas.restore();
+      }
+    }
+  }
+
+  int _labelStep(int maxVolume) {
+    if (maxVolume <= 400) {
+      return 50;
+    }
+    if (maxVolume <= 650) {
+      return 75;
+    }
+    return 100;
+  }
+
+  double _positionForValue(double value, _PeakFlowMeterGeometry geometry) {
+    final normalized = (value.clamp(0, maxVolume.toDouble())) / maxVolume;
+    return geometry.trackRect.left + (geometry.trackRect.width * normalized);
+  }
+
   @override
-  bool shouldRepaint(covariant _HalfCircleSelectorPainter oldDelegate) {
+  bool shouldRepaint(covariant _PeakFlowMeterPainter oldDelegate) {
     return oldDelegate.maxVolume != maxVolume ||
-        oldDelegate.textColor != textColor ||
+        oldDelegate.referenceMaxVolume != referenceMaxVolume ||
         oldDelegate.progress != progress ||
         oldDelegate.activeColor != activeColor ||
-        oldDelegate.trackColor != trackColor ||
-        oldDelegate.tickColor != tickColor;
+        oldDelegate.shellColor != shellColor ||
+        oldDelegate.faceColor != faceColor ||
+        oldDelegate.meterMarkColor != meterMarkColor ||
+        oldDelegate.textColor != textColor ||
+        oldDelegate.channelColor != channelColor;
   }
 }

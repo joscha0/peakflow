@@ -29,6 +29,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   late TimeOfDay time;
   double sliderValue = 0;
   int maxVolume = 850;
+  int colorReferenceMaxValue = 850;
   final noteController = TextEditingController();
 
   @override
@@ -41,12 +42,16 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   }
 
   Future<void> loadMax() async {
-    final deviceMaxValue = await getDeviceMaxValue();
+    final values = await Future.wait<int>([
+      getDeviceMaxValue(),
+      getColorReferenceMaxValue(),
+    ]);
     if (!mounted) {
       return;
     }
     setState(() {
-      maxVolume = deviceMaxValue;
+      maxVolume = values[0];
+      colorReferenceMaxValue = values[1];
       sliderValue = sliderValue.clamp(0, maxVolume.toDouble());
     });
   }
@@ -185,12 +190,13 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               _buildSectionLabel(
                 context,
                 'Peak Flow Value',
-                'Drag the half-circle to update the reading or type the value directly.',
+                'Drag the center line to update the reading or type the value directly.',
               ),
               const SizedBox(height: 8),
               PeakFlowValueSelector(
                 value: sliderValue,
                 maxVolume: maxVolume,
+                referenceMaxVolume: colorReferenceMaxValue,
                 onChanged: (value) {
                   setState(() {
                     sliderValue = value;
@@ -205,7 +211,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Maximum range: $maxVolume L/min',
+                  'Maximum reading: $colorReferenceMaxValue L/min',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
                   ),
