@@ -3,17 +3,14 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/theme_provider.dart';
+import 'package:peakflow/services/notification_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
 import 'package:url_launcher/url_launcher.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
@@ -28,9 +25,12 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   final colorMaxController = TextEditingController();
   final titleController = TextEditingController();
   final bodyController = TextEditingController();
+  final NotificationService _notificationService = NotificationService();
 
   bool isDarkMode = true;
   bool hasNotifications = false;
+  bool notificationsSupported = true;
+  bool isNotificationOperationInProgress = false;
   bool useAutomaticMaxValue = true;
   int notificationHour = 0;
   int notificationMinute = 0;
@@ -79,13 +79,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       useAutomaticMaxValue = prefs.getBool(useAutomaticMaxValueKey) ?? true;
       recordedBestValue = prefs.getInt(bestValueKey) ?? 0;
       titleController.text =
-          prefs.getString("notificationTitle") ?? "Test your Peakflow";
+          prefs.getString("notificationTitle") ??
+          _notificationService.defaultTitle;
       bodyController.text =
           prefs.getString("notificationBody") ??
-          "Take your peakflow record now!";
+          _notificationService.defaultBody;
       notificationHour = prefs.getInt('notificationHour') ?? 0;
       notificationMinute = prefs.getInt('notificationMinute') ?? 0;
       hasNotifications = notificationsEnabled;
+      notificationsSupported =
+          _notificationService.supportsScheduledNotifications;
     });
   }
 
@@ -190,84 +193,123 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
-  Future<void> _configureLocalTimeZone() async {
-    tz.initializeTimeZones();
-    final timeZone = await FlutterTimezone.getLocalTimezone();
-    tz.setLocalLocation(tz.getLocation(timeZone.identifier));
+  bool get _supportsScheduledNotifications =>
+      _notificationService.supportsScheduledNotifications;
+
+  Future<void> _persistNotificationPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt("notificationHour", notificationHour);
+    await prefs.setInt("notificationMinute", notificationMinute);
+    await prefs.setString('notificationTitle', titleController.text);
+    await prefs.setString('notificationBody', bodyController.text);
   }
 
-  tz.TZDateTime _convertTime(int hour, int minutes) {
-    final now = tz.TZDateTime.now(tz.local);
-    var scheduleDate = tz.TZDateTime(
-      tz.local,
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minutes,
-    );
-
-    if (scheduleDate.isBefore(now)) {
-      scheduleDate = scheduleDate.add(const Duration(days: 1));
+  void _showNotificationMessage(String message) {
+    if (!mounted) {
+      return;
     }
-    return scheduleDate;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<FlutterLocalNotificationsPlugin> initializeNotifications() async {
-    await _configureLocalTimeZone();
-    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-
-    const initializationSettings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-    );
-
-    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-
-    return flutterLocalNotificationsPlugin;
-  }
-
-  Future<void> setNotification() async {
-    final flutterLocalNotificationsPlugin = await initializeNotifications();
-    const notificationDetails = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'peakflow_daily',
-        'Peakflow daily reminder',
-        channelDescription: 'Peakflow daily reminder to take record',
-      ),
-    );
-
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      0,
-      titleController.text,
-      bodyController.text,
-      _convertTime(notificationHour, notificationMinute),
-      notificationDetails,
-      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-      matchDateTimeComponents: DateTimeComponents.time,
+  Future<bool> setNotification() async {
+    return _notificationService.scheduleDailyReminder(
+      title: titleController.text,
+      body: bodyController.text,
+      hour: notificationHour,
+      minute: notificationMinute,
     );
   }
 
   Future<bool> checkHasNotifications() async {
-    final flutterLocalNotificationsPlugin = await initializeNotifications();
-    final pendingNotificationRequests = await flutterLocalNotificationsPlugin
-        .pendingNotificationRequests();
-    return pendingNotificationRequests.isNotEmpty;
+    return _notificationService.hasScheduledReminder();
   }
 
   Future<void> cancelNotifications() async {
-    final flutterLocalNotificationsPlugin = await initializeNotifications();
-    await flutterLocalNotificationsPlugin.cancelAll();
+    await _notificationService.cancelReminder();
+  }
+
+  Future<void> _toggleNotifications(bool value) async {
+    if (isNotificationOperationInProgress) {
+      return;
+    }
+
+    if (!_supportsScheduledNotifications) {
+      _showNotificationMessage(
+        'Daily reminders are currently supported on Android, iPhone, and macOS.',
+      );
+      return;
+    }
+
+    setState(() {
+      isNotificationOperationInProgress = true;
+    });
+
+    try {
+      await _persistNotificationPreferences();
+
+      final bool enabled;
+      if (value) {
+        enabled = await setNotification();
+      } else {
+        await cancelNotifications();
+        enabled = false;
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        hasNotifications = value ? enabled : false;
+      });
+
+      if (value && !enabled) {
+        _showNotificationMessage(
+          'Notification permission is required to enable daily reminders.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isNotificationOperationInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveNotificationSettings() async {
+    await _persistNotificationPreferences();
+
+    if (!hasNotifications) {
+      return;
+    }
+
+    final scheduled = await setNotification();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      hasNotifications = scheduled;
+    });
+
+    _showNotificationMessage(
+      scheduled
+          ? 'Reminder updated.'
+          : 'Could not update reminder because notification permission is not available.',
+    );
   }
 
   Future<void> displayTimePicker(BuildContext context) async {
     final pickedTime = await showTimePicker(
       context: context,
-      initialTime: TimeOfDay.now(),
+      initialTime: TimeOfDay(
+        hour: notificationHour,
+        minute: notificationMinute,
+      ),
     );
 
     if (pickedTime != null) {
@@ -383,7 +425,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   Widget _buildMaterial3Switch(
     BuildContext context, {
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
   }) {
     final theme = Theme.of(context);
 
@@ -664,19 +706,11 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   trailing: _buildMaterial3Switch(
                     context,
                     value: hasNotifications,
-                    onChanged: (value) async {
-                      if (hasNotifications) {
-                        await cancelNotifications();
-                      } else {
-                        await setNotification();
-                      }
-                      if (!mounted) {
-                        return;
-                      }
-                      setState(() {
-                        hasNotifications = value;
-                      });
-                    },
+                    onChanged:
+                        notificationsSupported &&
+                            !isNotificationOperationInProgress
+                        ? _toggleNotifications
+                        : null,
                   ),
                 ),
                 Padding(
@@ -715,6 +749,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                           color: mutedTextColor,
                         ),
                       ),
+                      if (!notificationsSupported) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Daily scheduled reminders are available on Android, iPhone, and macOS.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 14),
                       Wrap(
                         spacing: 12,
@@ -731,30 +774,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                             ),
                           ),
                           ElevatedButton.icon(
-                            onPressed: () async {
-                              final prefs =
-                                  await SharedPreferences.getInstance();
-                              await prefs.setInt(
-                                "notificationHour",
-                                notificationHour,
-                              );
-                              await prefs.setInt(
-                                "notificationMinute",
-                                notificationMinute,
-                              );
-                              await prefs.setString(
-                                'notificationTitle',
-                                titleController.text,
-                              );
-                              await prefs.setString(
-                                'notificationBody',
-                                bodyController.text,
-                              );
-
-                              if (hasNotifications) {
-                                await setNotification();
-                              }
-                            },
+                            onPressed: notificationsSupported
+                                ? _saveNotificationSettings
+                                : null,
                             icon: const Icon(Icons.save_outlined),
                             label: Text(hasNotifications ? 'UPDATE' : 'SAVE'),
                           ),
