@@ -481,7 +481,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   icon: Icons.dark_mode_outlined,
                   title: 'Dark mode',
                   description:
-                      'Use the darker theme for lower glare and stronger contrast.',
+                      'Dark mode ${isDarkMode ? 'is enabled' : 'is disabled'}.',
                   trailing: Switch.adaptive(
                     value: isDarkMode,
                     onChanged: (value) async {
