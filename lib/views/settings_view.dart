@@ -380,6 +380,23 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  Widget _buildMaterial3Switch(
+    BuildContext context, {
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final theme = Theme.of(context);
+
+    return Theme(
+      data: ThemeData.from(
+        colorScheme: theme.colorScheme,
+        textTheme: theme.textTheme,
+        useMaterial3: true,
+      ),
+      child: Switch(value: value, onChanged: onChanged),
+    );
+  }
+
   Widget _buildValueEditor(
     BuildContext context, {
     required TextEditingController controller,
@@ -545,7 +562,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   title: 'Dark mode',
                   description:
                       'Dark mode ${isDarkMode ? 'is enabled' : 'is disabled'}.',
-                  trailing: Switch.adaptive(
+                  trailing: _buildMaterial3Switch(
+                    context,
                     value: isDarkMode,
                     onChanged: (value) async {
                       final prefs = await SharedPreferences.getInstance();
@@ -592,7 +610,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   title: useAutomaticMaxValue ? 'Automatic max' : 'Manual max',
                   description:
                       'Auto uses your highest saved reading for the green, orange, and red zones. Turn it off to enter your own max.',
-                  trailing: Switch.adaptive(
+                  trailing: _buildMaterial3Switch(
+                    context,
                     value: useAutomaticMaxValue,
                     onChanged: (value) async {
                       await setUseAutomaticMaxValue(value);
@@ -642,7 +661,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   title: 'Daily reminder',
                   description:
                       'Turn scheduled reminders on or off without leaving this screen.',
-                  trailing: Switch.adaptive(
+                  trailing: _buildMaterial3Switch(
+                    context,
                     value: hasNotifications,
                     onChanged: (value) async {
                       if (hasNotifications) {
