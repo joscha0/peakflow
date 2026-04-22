@@ -116,11 +116,15 @@ class _HomeViewState extends ConsumerState<HomeView> {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   sliver: SliverGrid(
                     delegate: SliverChildBuilderDelegate((context, itemIndex) {
-                      return DateWidget(
-                        dayEntry: sections[index].entries[itemIndex],
-                        referenceMaxValue: referenceMaxValue,
-                      );
-                    }, childCount: sections[index].entries.length),
+                      final item = sections[index].items[itemIndex];
+                      if (item.dayEntry != null) {
+                        return DateWidget(
+                          dayEntry: item.dayEntry!,
+                          referenceMaxValue: referenceMaxValue,
+                        );
+                      }
+                      return _GapIndicatorTile(gapDays: item.gapDays!);
+                    }, childCount: sections[index].items.length),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: crossAxisCount,
                       mainAxisSpacing: 8,
@@ -149,18 +153,28 @@ class _HomeViewState extends ConsumerState<HomeView> {
 
   List<_HomeSection> _buildSections(List<DayEntry> entries) {
     final sections = <_HomeSection>[];
+    DayEntry? previousEntry;
+
     for (final entry in entries) {
       if (sections.isEmpty || !_isSameMonth(sections.last.month, entry.date)) {
         sections.add(
           _HomeSection(
             year: entry.date.year,
             month: DateTime(entry.date.year, entry.date.month),
-            entries: [entry],
+            items: [],
           ),
         );
-      } else {
-        sections.last.entries.add(entry);
       }
+
+      final gapDays = previousEntry == null
+          ? 0
+          : entry.date.difference(previousEntry.date).inDays.abs() - 1;
+      if (gapDays > 0) {
+        sections.last.items.add(_HomeSectionItem.gap(gapDays));
+      }
+
+      sections.last.items.add(_HomeSectionItem.entry(entry));
+      previousEntry = entry;
     }
     return sections;
   }
@@ -180,13 +194,85 @@ class _HomeViewState extends ConsumerState<HomeView> {
 class _HomeSection {
   final int year;
   final DateTime month;
-  final List<DayEntry> entries;
+  final List<_HomeSectionItem> items;
 
-  _HomeSection({
-    required this.year,
-    required this.month,
-    required this.entries,
-  });
+  _HomeSection({required this.year, required this.month, required this.items});
+}
+
+class _HomeSectionItem {
+  final DayEntry? dayEntry;
+  final int? gapDays;
+
+  const _HomeSectionItem._({this.dayEntry, this.gapDays});
+
+  factory _HomeSectionItem.entry(DayEntry dayEntry) {
+    return _HomeSectionItem._(dayEntry: dayEntry);
+  }
+
+  factory _HomeSectionItem.gap(int gapDays) {
+    return _HomeSectionItem._(gapDays: gapDays);
+  }
+}
+
+class _GapIndicatorTile extends StatelessWidget {
+  final int gapDays;
+
+  const _GapIndicatorTile({required this.gapDays});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isSingleDayGap = gapDays == 1;
+    const indicatorColor = Colors.white;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (isSingleDayGap)
+            Container(
+              width: 26,
+              height: 3,
+              decoration: BoxDecoration(
+                color: indicatorColor,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (index) {
+                return Container(
+                  width: 6,
+                  height: 6,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: const BoxDecoration(
+                    color: indicatorColor,
+                    shape: BoxShape.circle,
+                  ),
+                );
+              }),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            isSingleDayGap ? "1 day" : "$gapDays days",
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            isSingleDayGap ? "between" : "missing",
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _SectionHeaderDelegate extends SliverPersistentHeaderDelegate {
