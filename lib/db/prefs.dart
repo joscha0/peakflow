@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:peakflow/db/app_database.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,6 +12,9 @@ const String bestValueKey = "bestValue";
 const String sortValueKey = "sortValue";
 const String useAutomaticMaxValueKey = "useAutomaticMaxValue";
 const String manualColorReferenceMaxValueKey = "manualColorReferenceMaxValue";
+const String readingsMigratedToDriftKey = "readingsMigratedToDrift";
+
+Future<AppDatabase>? _databaseFuture;
 
 Future<int> getBestValue() async {
   final prefs = await SharedPreferences.getInstance();
@@ -82,21 +85,19 @@ Future<void> setSortValue(bool value) async {
 }
 
 Future<void> updateBestValue() async {
+  final database = await _getDatabase();
   final prefs = await SharedPreferences.getInstance();
-  int newBest = 0;
-  List<String> dateList = prefs.getStringList("dates") ?? [];
-  for (String date in dateList) {
-    String? data = prefs.getString(date);
-    if (data != null) {
-      DayEntry entry = DayEntry.fromJson(json.decode(data));
-      for (Reading reading in entry.readings) {
-        if (reading.value > newBest) {
-          newBest = reading.value;
-        }
-      }
-    }
-  }
-  await prefs.setInt(bestValueKey, newBest);
+  await prefs.setInt(bestValueKey, await database.getBestReadingValue());
+}
+
+Future<List<DayEntry>> getDayEntries() async {
+  final database = await _getDatabase();
+  return database.getAllDayEntries();
+}
+
+Future<DayEntry?> getDayEntry(DateTime date) async {
+  final database = await _getDatabase();
+  return database.getDayEntry(date);
 }
 
 Future<DayEntry> addReading(
@@ -107,43 +108,23 @@ Future<DayEntry> addReading(
   String noteDay,
   Map<String, bool> checkboxValues,
 ) async {
-  DayEntry entry;
-  String key = DateFormat("yyyyMMdd").format(date);
-  final prefs = await SharedPreferences.getInstance();
-  String? oldEntry = prefs.getString(key);
-  if (oldEntry != null) {
-    entry = DayEntry.fromJson(json.decode(oldEntry));
-  } else {
-    entry = DayEntry(
-      date: date,
-      readings: [],
-      note: noteDay,
-      morningValue: 0,
-      eveningValue: 0,
-      checkboxValues: checkboxValues,
-    );
-  }
-  entry.readings.add(Reading(time: time, value: value, note: noteReading));
-  int bestValue = await getBestValue();
-  if (value > bestValue) {
-    setBestValue(value);
-  }
-  List<int> morningEvening = getMorningEveningValue(entry.readings);
-  DayEntry newEntry = DayEntry(
-    date: entry.date,
-    readings: entry.readings,
+  final database = await _getDatabase();
+  final existingEntry = await database.getDayEntry(date);
+  final readings = List<Reading>.from(existingEntry?.readings ?? const []);
+  readings.add(Reading(time: time, value: value, note: noteReading));
+
+  final morningEvening = getMorningEveningValue(readings);
+  final newEntry = DayEntry(
+    date: existingEntry?.date ?? date,
+    readings: readings,
     note: noteDay,
     morningValue: morningEvening[0],
     eveningValue: morningEvening[1],
     checkboxValues: checkboxValues,
   );
 
-  await prefs.setString(key, json.encode(newEntry.toJson()));
-  final List<String> dateList = prefs.getStringList("dates") ?? [];
-  if (!dateList.contains(key)) {
-    dateList.add(key);
-    await prefs.setStringList("dates", dateList);
-  }
+  await database.replaceDayEntry(newEntry);
+  await _storeBestValueAfterWrite(database, fallbackCandidate: value);
   return newEntry;
 }
 
@@ -155,24 +136,26 @@ int _sanitizeMaxValue(int? value) {
 }
 
 Future<void> deleteReading(DateTime date, int readingIndex) async {
-  final prefs = await SharedPreferences.getInstance();
-  String key = DateFormat("yyyyMMdd").format(date);
-  String? oldEntry = prefs.getString(key);
-  if (oldEntry != null) {
-    DayEntry entry = DayEntry.fromJson(json.decode(oldEntry));
-    entry.readings.removeAt(readingIndex);
-    List<int> morningEvening = getMorningEveningValue(entry.readings);
-    DayEntry newEntry = DayEntry(
-      date: entry.date,
-      readings: entry.readings,
-      note: entry.note,
-      morningValue: morningEvening[0],
-      eveningValue: morningEvening[1],
-      checkboxValues: entry.checkboxValues,
-    );
-    await prefs.setString(key, json.encode(newEntry.toJson()));
-    updateBestValue();
+  final database = await _getDatabase();
+  final entry = await database.getDayEntry(date);
+  if (entry == null || readingIndex >= entry.readings.length) {
+    return;
   }
+
+  final updatedReadings = List<Reading>.from(entry.readings)
+    ..removeAt(readingIndex);
+  final morningEvening = getMorningEveningValue(updatedReadings);
+  final newEntry = DayEntry(
+    date: entry.date,
+    readings: updatedReadings,
+    note: entry.note,
+    morningValue: morningEvening[0],
+    eveningValue: morningEvening[1],
+    checkboxValues: entry.checkboxValues,
+  );
+
+  await database.replaceDayEntry(newEntry);
+  await _storeBestValueAfterWrite(database);
 }
 
 List<int> getMorningEveningValue(List<Reading> readings) {
@@ -200,13 +183,9 @@ List<int> getMorningEveningValue(List<Reading> readings) {
 }
 
 Future<void> deleteDay(DateTime date) async {
-  final prefs = await SharedPreferences.getInstance();
-  String key = DateFormat("yyyyMMdd").format(date);
-  await prefs.remove(key);
-  List<String> dateList = prefs.getStringList("dates") ?? [];
-  dateList.remove(key);
-  await prefs.setStringList("dates", dateList);
-  updateBestValue();
+  final database = await _getDatabase();
+  await database.deleteDayEntry(date);
+  await _storeBestValueAfterWrite(database);
 }
 
 Future<DayEntry> updateDay(
@@ -214,9 +193,8 @@ Future<DayEntry> updateDay(
   String note,
   Map<String, bool> checkboxValues,
 ) async {
-  String key = DateFormat("yyyyMMdd").format(dayEntry.date);
-  final prefs = await SharedPreferences.getInstance();
-  DayEntry newEntry = DayEntry(
+  final database = await _getDatabase();
+  final newEntry = DayEntry(
     date: dayEntry.date,
     readings: dayEntry.readings,
     note: note,
@@ -225,7 +203,7 @@ Future<DayEntry> updateDay(
     checkboxValues: checkboxValues,
   );
 
-  await prefs.setString(key, json.encode(newEntry.toJson()));
+  await database.replaceDayEntry(newEntry);
   return newEntry;
 }
 
@@ -243,4 +221,64 @@ Future<DayEntry> updateReading(
     dayEntry.note,
     dayEntry.checkboxValues,
   );
+}
+
+Future<AppDatabase> _getDatabase() {
+  return _databaseFuture ??= _openDatabase();
+}
+
+Future<AppDatabase> _openDatabase() async {
+  final database = AppDatabase();
+  await _migrateReadingsToDriftIfNeeded(database);
+  return database;
+}
+
+Future<void> _migrateReadingsToDriftIfNeeded(AppDatabase database) async {
+  final prefs = await SharedPreferences.getInstance();
+  final migrationDone = prefs.getBool(readingsMigratedToDriftKey) ?? false;
+  if (migrationDone) {
+    return;
+  }
+
+  final existingRows = await database.countStoredDays();
+  if (existingRows > 0) {
+    await prefs.setBool(readingsMigratedToDriftKey, true);
+    await prefs.setInt(bestValueKey, await database.getBestReadingValue());
+    return;
+  }
+
+  final dateList = prefs.getStringList("dates") ?? const <String>[];
+  if (dateList.isEmpty) {
+    await prefs.setBool(readingsMigratedToDriftKey, true);
+    await prefs.setInt(bestValueKey, 0);
+    return;
+  }
+
+  final sortedDates = List<String>.from(dateList)..sort();
+  final entries = <DayEntry>[];
+  for (final dateKey in sortedDates) {
+    final data = prefs.getString(dateKey);
+    if (data == null || data.isEmpty) {
+      continue;
+    }
+
+    entries.add(DayEntry.fromJson(json.decode(data) as Map<String, dynamic>));
+  }
+
+  await database.replaceAllDayEntries(entries);
+  await prefs.setBool(readingsMigratedToDriftKey, true);
+  await prefs.setInt(bestValueKey, await database.getBestReadingValue());
+}
+
+Future<void> _storeBestValueAfterWrite(
+  AppDatabase database, {
+  int? fallbackCandidate,
+}) async {
+  final bestValue = await database.getBestReadingValue();
+  await setBestValue(bestValue > 0 ? bestValue : (fallbackCandidate ?? 0));
+}
+
+@visibleForTesting
+void debugUseDatabase(AppDatabase? database) {
+  _databaseFuture = database == null ? null : Future.value(database);
 }

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -137,31 +138,24 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     });
   }
 
-  List<List<String>> jsonToCsvList(Map<String, dynamic> json) {
+  List<List<String>> dayEntryToCsvList(DayEntry entry) {
     final listItems = <List<String>>[];
-    final date = DateTime.parse(
-      json['date'] as String,
-    ).toIso8601String().split('T').first;
+    final date = entry.date.toIso8601String().split('T').first;
 
     final checkboxes = <String>[];
-    final checkboxValues = Map<String, bool>.from(
-      json['checkboxValues'] ?? Map<String, bool>.from(defaultCheckboxValues),
-    );
-    for (final checkbox in checkboxValues.keys) {
-      if (checkboxValues[checkbox] ?? false) {
+    for (final checkbox in entry.checkboxValues.keys) {
+      if (entry.checkboxValues[checkbox] ?? false) {
         checkboxes.add(checkbox);
       }
     }
 
-    for (final reading in List<Map<String, dynamic>>.from(
-      json['readings'] as List,
-    )) {
+    for (final reading in entry.readings) {
       listItems.add([
         date,
-        reading['time'] as String,
-        reading['value'].toString(),
-        reading['note'] as String? ?? '',
-        json['note'] as String? ?? '',
+        "${reading.time.hour}:${reading.time.minute}",
+        reading.value.toString(),
+        reading.note,
+        entry.note,
         checkboxes.join(', '),
       ]);
     }
@@ -174,17 +168,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     final listItems = <List<String>>[
       ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
     ];
-    final prefs = await SharedPreferences.getInstance();
-    final dateList = prefs.getStringList("dates") ?? <String>[];
-    dateList.sort();
+    final entries = await getDayEntries();
 
-    for (final date in dateList) {
-      final rawValue = prefs.getString(date);
-      if (rawValue == null) {
-        continue;
-      }
-      final values = json.decode(rawValue) as Map<String, dynamic>;
-      listItems.addAll(jsonToCsvList(values));
+    for (final entry in entries) {
+      listItems.addAll(dayEntryToCsvList(entry));
     }
 
     final csv = const ListToCsvConverter().convert(listItems);

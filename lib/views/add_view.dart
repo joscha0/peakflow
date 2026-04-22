@@ -1,14 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
-import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/widgets/peak_flow_value_selector.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AddView extends ConsumerStatefulWidget {
   final DateTime? date;
@@ -69,14 +65,11 @@ class _AddViewState extends ConsumerState<AddView> {
   }
 
   Future<void> getDay() async {
-    final prefs = await SharedPreferences.getInstance();
-    String key = DateFormat("yyyyMMdd").format(date);
-    String? jsonData = prefs.getString(key);
+    final entry = await getDayEntry(date);
     if (!mounted) {
       return;
     }
-    if (jsonData != null) {
-      DayEntry entry = DayEntry.fromJson(json.decode(jsonData));
+    if (entry != null) {
       setState(() {
         noteDayController.text = entry.note;
         checkboxValues = entry.checkboxValues;
@@ -90,12 +83,12 @@ class _AddViewState extends ConsumerState<AddView> {
   }
 
   Future<void> loadMax() async {
-    final prefs = await SharedPreferences.getInstance();
+    final deviceMaxValue = await getDeviceMaxValue();
     if (!mounted) {
       return;
     }
     setState(() {
-      maxVolume = prefs.getInt("maxVolume") ?? 850;
+      maxVolume = deviceMaxValue;
       sliderValue = sliderValue.clamp(0, maxVolume.toDouble());
     });
   }

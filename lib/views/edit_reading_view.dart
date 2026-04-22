@@ -7,7 +7,6 @@ import 'package:peakflow/models/reading_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/day_view.dart';
 import 'package:peakflow/widgets/peak_flow_value_selector.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class EditReadingView extends ConsumerStatefulWidget {
   final Reading reading;
@@ -42,12 +41,12 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   }
 
   Future<void> loadMax() async {
-    final prefs = await SharedPreferences.getInstance();
+    final deviceMaxValue = await getDeviceMaxValue();
     if (!mounted) {
       return;
     }
     setState(() {
-      maxVolume = prefs.getInt("maxVolume") ?? 850;
+      maxVolume = deviceMaxValue;
       sliderValue = sliderValue.clamp(0, maxVolume.toDouble());
     });
   }

@@ -2,9 +2,9 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class GraphView extends ConsumerStatefulWidget {
   const GraphView({super.key});
@@ -64,7 +64,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
     final loadedEntries = await ref
         .read(entryListProvider.notifier)
         .getEntries();
-    final prefs = await SharedPreferences.getInstance();
+    final deviceMaxValue = await getDeviceMaxValue();
     if (!mounted) {
       return;
     }
@@ -74,7 +74,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
       range = loadedEntries.isEmpty
           ? null
           : DateTimeRange(start: loadedEntries.first.date, end: DateTime.now());
-      maxVolume = prefs.getInt("maxVolume") ?? 850;
+      maxVolume = deviceMaxValue;
     });
     if (loadedEntries.isNotEmpty) {
       loadSpots();

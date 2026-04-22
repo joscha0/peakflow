@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -8,7 +6,6 @@ import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/day_view.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class EditDayView extends ConsumerStatefulWidget {
   final DayEntry dayEntry;
@@ -32,14 +29,11 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
   }
 
   Future<void> getDay() async {
-    final prefs = await SharedPreferences.getInstance();
-    String key = DateFormat("yyyyMMdd").format(widget.dayEntry.date);
-    String? jsonData = prefs.getString(key);
+    final entry = await getDayEntry(widget.dayEntry.date);
     if (!mounted) {
       return;
     }
-    if (jsonData != null) {
-      DayEntry entry = DayEntry.fromJson(json.decode(jsonData));
+    if (entry != null) {
       setState(() {
         noteDayController.text = entry.note;
         checkboxValues = entry.checkboxValues;
