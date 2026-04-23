@@ -22,4 +22,15 @@ class DayEntriesState extends StateNotifier<List<DayEntry>> {
   void changeSort() {
     state = state.reversed.toList();
   }
+
+  void removeDay(DateTime date) {
+    state = state
+        .where(
+          (entry) =>
+              entry.date.year != date.year ||
+              entry.date.month != date.month ||
+              entry.date.day != date.day,
+        )
+        .toList();
+  }
 }
