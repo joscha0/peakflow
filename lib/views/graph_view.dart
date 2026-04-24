@@ -19,8 +19,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
   static const double _yAxisWidth = 42;
   static const double _yAxisGap = 0;
   static const double _bottomTitleReservedSize = 58;
-  static const double _scrollbarThickness = 12;
-  static const double _scrollbarDragClearance = 18;
+  static const double _scrollbarThickness = 24;
+  static const double _scrollbarTopSpacing = 8;
   static const double _dragScrollMultiplier = 1;
   static const double _minDayWidth = 18;
   static const double _maxDayWidth = 32;
@@ -489,7 +489,16 @@ class _GraphViewState extends ConsumerState<GraphView> {
                     );
                     final chartHeight = math.max(
                       0.0,
-                      constraints.maxHeight - _bottomTitleReservedSize,
+                      constraints.maxHeight -
+                          _bottomTitleReservedSize -
+                          _scrollbarThickness -
+                          _scrollbarTopSpacing,
+                    );
+                    final chartAreaHeight = math.max(
+                      0.0,
+                      constraints.maxHeight -
+                          _scrollbarThickness -
+                          _scrollbarTopSpacing,
                     );
                     final dayWidth = _resolveDayWidth(plotViewportWidth);
                     final chartWidth = math.max(
@@ -505,65 +514,73 @@ class _GraphViewState extends ConsumerState<GraphView> {
                         ),
                         const SizedBox(width: _yAxisGap),
                         Expanded(
-                          child: Scrollbar(
-                            controller: _chartScrollController,
-                            interactive: true,
-                            thumbVisibility: true,
-                            trackVisibility: true,
-                            thickness: _scrollbarThickness,
-                            scrollbarOrientation: ScrollbarOrientation.bottom,
-                            child: Stack(
-                              children: [
-                                RepaintBoundary(
-                                  child: SingleChildScrollView(
-                                    controller: _chartScrollController,
-                                    physics: const ClampingScrollPhysics(),
-                                    scrollDirection: Axis.horizontal,
-                                    child: SizedBox(
-                                      width: chartWidth,
-                                      height: constraints.maxHeight,
-                                      child: CustomPaint(
-                                        painter: _PeakFlowChartPainter(
-                                          theme: theme,
-                                          points: chartPoints,
-                                          selectedPoint: selectedPoint,
-                                          startDate: _chartStartDate,
-                                          daySpan: _chartDaySpan,
-                                          maxVolume: maxVolume,
-                                          colorReferenceMaxVolume:
-                                              colorReferenceMaxVolume,
-                                          dayWidth: dayWidth,
-                                          chartRightPadding: _chartRightPadding,
-                                          bottomTitleReservedSize:
-                                              _bottomTitleReservedSize,
-                                          viewportWidth: plotViewportWidth,
-                                          scrollController: _chartScrollController,
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                height: chartAreaHeight,
+                                child: Stack(
+                                  children: [
+                                    RepaintBoundary(
+                                      child: SingleChildScrollView(
+                                        controller: _chartScrollController,
+                                        physics: const ClampingScrollPhysics(),
+                                        scrollDirection: Axis.horizontal,
+                                        child: SizedBox(
+                                          width: chartWidth,
+                                          height: chartAreaHeight,
+                                          child: CustomPaint(
+                                            painter: _PeakFlowChartPainter(
+                                              theme: theme,
+                                              points: chartPoints,
+                                              selectedPoint: selectedPoint,
+                                              startDate: _chartStartDate,
+                                              daySpan: _chartDaySpan,
+                                              maxVolume: maxVolume,
+                                              colorReferenceMaxVolume:
+                                                  colorReferenceMaxVolume,
+                                              dayWidth: dayWidth,
+                                              chartRightPadding:
+                                                  _chartRightPadding,
+                                              bottomTitleReservedSize:
+                                                  _bottomTitleReservedSize,
+                                              viewportWidth: plotViewportWidth,
+                                              scrollController:
+                                                  _chartScrollController,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                                Positioned.fill(
-                                  bottom: _scrollbarDragClearance,
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTapDown: (details) => _selectPointAtPosition(
-                                      localPosition: details.localPosition,
+                                    Positioned.fill(
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTapDown:
+                                            (details) => _selectPointAtPosition(
+                                              localPosition:
+                                                  details.localPosition,
+                                              chartHeight: chartHeight,
+                                              dayWidth: dayWidth,
+                                            ),
+                                        onHorizontalDragUpdate: (details) =>
+                                            _dragChartBy(details.delta.dx),
+                                      ),
+                                    ),
+                                    _buildTooltipOverlay(
+                                      theme: theme,
+                                      viewportWidth: plotViewportWidth,
                                       chartHeight: chartHeight,
                                       dayWidth: dayWidth,
                                     ),
-                                    onHorizontalDragUpdate: (details) =>
-                                        _dragChartBy(details.delta.dx),
-                                  ),
+                                  ],
                                 ),
-                                _buildTooltipOverlay(
-                                  theme: theme,
-                                  viewportWidth: plotViewportWidth,
-                                  chartHeight: chartHeight,
-                                  dayWidth: dayWidth,
-                                ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(height: _scrollbarTopSpacing),
+                              _ChartScrollbar(
+                                controller: _chartScrollController,
+                                theme: theme,
+                                thickness: _scrollbarThickness,
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -590,6 +607,138 @@ class _ChartPoint {
   final int value;
   final DateTime date;
   final String label;
+}
+
+class _ChartScrollbar extends StatelessWidget {
+  const _ChartScrollbar({
+    required this.controller,
+    required this.theme,
+    required this.thickness,
+  });
+
+  final ScrollController controller;
+  final ThemeData theme;
+  final double thickness;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: thickness,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return AnimatedBuilder(
+            animation: controller,
+            builder: (context, child) {
+              final hasClients = controller.hasClients;
+              final maxScrollExtent =
+                  hasClients ? controller.position.maxScrollExtent : 0.0;
+              final viewportWidth =
+                  hasClients ? controller.position.viewportDimension : constraints.maxWidth;
+              final contentWidth = viewportWidth + maxScrollExtent;
+              final minThumbWidth = math.min(constraints.maxWidth, 72.0);
+              final thumbWidth = contentWidth <= 0
+                  ? constraints.maxWidth
+                  : math.max(
+                      minThumbWidth,
+                      constraints.maxWidth * (viewportWidth / contentWidth),
+                    );
+              final availableTravel = math.max(0.0, constraints.maxWidth - thumbWidth);
+              final thumbLeft = maxScrollExtent <= 0 || availableTravel == 0
+                  ? 0.0
+                  : availableTravel * (controller.offset / maxScrollExtent);
+
+              void jumpToTrackPosition(double localDx) {
+                if (!hasClients || maxScrollExtent <= 0 || availableTravel == 0) {
+                  return;
+                }
+                final nextThumbLeft =
+                    (localDx - (thumbWidth / 2)).clamp(0.0, availableTravel);
+                final nextOffset = (nextThumbLeft / availableTravel) * maxScrollExtent;
+                controller.jumpTo(nextOffset.clamp(0.0, maxScrollExtent));
+              }
+
+              void dragBy(double deltaDx) {
+                if (!hasClients || maxScrollExtent <= 0 || availableTravel == 0) {
+                  return;
+                }
+                final scrollDelta = deltaDx * (maxScrollExtent / availableTravel);
+                final nextOffset =
+                    (controller.offset + scrollDelta).clamp(0.0, maxScrollExtent);
+                controller.jumpTo(nextOffset);
+              }
+
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTapDown: (details) => jumpToTrackPosition(details.localPosition.dx),
+                onHorizontalDragUpdate: (details) => dragBy(details.delta.dx),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.45,
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: theme.dividerColor.withValues(alpha: 0.55),
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: thumbLeft,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: thumbWidth,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: theme.colorScheme.primary.withValues(alpha: 0.28),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.keyboard_arrow_left_rounded,
+                                size: 20,
+                                color: theme.colorScheme.onPrimary,
+                              ),
+                              Container(
+                                width: 18,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.onPrimary.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
+                              Icon(
+                                Icons.keyboard_arrow_right_rounded,
+                                size: 20,
+                                color: theme.colorScheme.onPrimary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _PeakFlowChartPainter extends CustomPainter {
