@@ -50,7 +50,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
   @override
   Widget build(BuildContext context) {
     final entries = ref.watch(entryListProvider);
-    final sections = _buildSections(entries);
+    final yearSections = _buildSections(entries);
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = _getCrossAxisCount(constraints.maxWidth);
@@ -85,55 +85,73 @@ class _HomeViewState extends ConsumerState<HomeView> {
           ),
           body: CustomScrollView(
             slivers: [
-              for (int index = 0; index < sections.length; index++) ...[
-                if (index == 0 ||
-                    sections[index].year != sections[index - 1].year)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _SectionHeaderDelegate(
-                      height: 44,
-                      child: _SectionTitle(
-                        title: sections[index].year.toString(),
-                        fontSize: 28,
-                        topPadding: index == 0 ? 8 : 14,
-                        bottomPadding: 2,
+              for (
+                int yearIndex = 0;
+                yearIndex < yearSections.length;
+                yearIndex++
+              )
+                SliverMainAxisGroup(
+                  slivers: [
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _SectionHeaderDelegate(
+                        height: 44,
+                        child: _SectionTitle(
+                          title: yearSections[yearIndex].year.toString(),
+                          fontSize: 28,
+                          topPadding: yearIndex == 0 ? 8 : 14,
+                          bottomPadding: 2,
+                        ),
                       ),
                     ),
-                  ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SectionHeaderDelegate(
-                    height: 34,
-                    child: _SectionTitle(
-                      title: DateFormat("MMMM").format(sections[index].month),
-                      fontSize: 18,
-                      topPadding: 8,
-                      bottomPadding: 6,
-                    ),
-                  ),
+                    for (final monthSection in yearSections[yearIndex].months)
+                      SliverMainAxisGroup(
+                        slivers: [
+                          SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _SectionHeaderDelegate(
+                              height: 34,
+                              child: _SectionTitle(
+                                title: DateFormat(
+                                  "MMMM",
+                                ).format(monthSection.month),
+                                fontSize: 18,
+                                topPadding: 8,
+                                bottomPadding: 6,
+                              ),
+                            ),
+                          ),
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            sliver: SliverGrid(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                itemIndex,
+                              ) {
+                                final item = monthSection.items[itemIndex];
+                                if (item.dayEntry != null) {
+                                  return DateWidget(
+                                    dayEntry: item.dayEntry!,
+                                    referenceMaxValue: referenceMaxValue,
+                                  );
+                                }
+                                return _GapIndicatorTile(
+                                  gapDays: item.gapDays!,
+                                );
+                              }, childCount: monthSection.items.length),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    mainAxisSpacing: 8,
+                                    crossAxisSpacing: 8,
+                                    childAspectRatio: 0.84,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, itemIndex) {
-                      final item = sections[index].items[itemIndex];
-                      if (item.dayEntry != null) {
-                        return DateWidget(
-                          dayEntry: item.dayEntry!,
-                          referenceMaxValue: referenceMaxValue,
-                        );
-                      }
-                      return _GapIndicatorTile(gapDays: item.gapDays!);
-                    }, childCount: sections[index].items.length),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: 0.84,
-                    ),
-                  ),
-                ),
-              ],
               const SliverToBoxAdapter(child: SizedBox(height: 84)),
             ],
           ),
@@ -151,15 +169,19 @@ class _HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
-  List<_HomeSection> _buildSections(List<DayEntry> entries) {
-    final sections = <_HomeSection>[];
+  List<_HomeYearSection> _buildSections(List<DayEntry> entries) {
+    final sections = <_HomeYearSection>[];
     DayEntry? previousEntry;
 
     for (final entry in entries) {
-      if (sections.isEmpty || !_isSameMonth(sections.last.month, entry.date)) {
-        sections.add(
-          _HomeSection(
-            year: entry.date.year,
+      if (sections.isEmpty || sections.last.year != entry.date.year) {
+        sections.add(_HomeYearSection(year: entry.date.year, months: []));
+      }
+
+      final months = sections.last.months;
+      if (months.isEmpty || !_isSameMonth(months.last.month, entry.date)) {
+        months.add(
+          _HomeMonthSection(
             month: DateTime(entry.date.year, entry.date.month),
             items: [],
           ),
@@ -170,10 +192,10 @@ class _HomeViewState extends ConsumerState<HomeView> {
           ? 0
           : entry.date.difference(previousEntry.date).inDays.abs() - 1;
       if (gapDays > 0) {
-        sections.last.items.add(_HomeSectionItem.gap(gapDays));
+        months.last.items.add(_HomeSectionItem.gap(gapDays));
       }
 
-      sections.last.items.add(_HomeSectionItem.entry(entry));
+      months.last.items.add(_HomeSectionItem.entry(entry));
       previousEntry = entry;
     }
     return sections;
@@ -191,12 +213,18 @@ class _HomeViewState extends ConsumerState<HomeView> {
   }
 }
 
-class _HomeSection {
+class _HomeYearSection {
   final int year;
+  final List<_HomeMonthSection> months;
+
+  _HomeYearSection({required this.year, required this.months});
+}
+
+class _HomeMonthSection {
   final DateTime month;
   final List<_HomeSectionItem> items;
 
-  _HomeSection({required this.year, required this.month, required this.items});
+  _HomeMonthSection({required this.month, required this.items});
 }
 
 class _HomeSectionItem {
