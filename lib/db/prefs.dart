@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:peakflow/db/app_database.dart';
+import 'package:peakflow/debug/mock_data.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -276,6 +277,19 @@ Future<void> _storeBestValueAfterWrite(
 }) async {
   final bestValue = await database.getBestReadingValue();
   await setBestValue(bestValue > 0 ? bestValue : (fallbackCandidate ?? 0));
+}
+
+Future<void> debugLoadMockData({int count = defaultMockEntryCount}) async {
+  final database = await _getDatabase();
+  final entries = buildMockDayEntries(count: count);
+  await database.replaceAllDayEntries(entries);
+  await setBestValue(await database.getBestReadingValue());
+}
+
+Future<void> debugClearAllData() async {
+  final database = await _getDatabase();
+  await database.replaceAllDayEntries(const []);
+  await setBestValue(0);
 }
 
 @visibleForTesting

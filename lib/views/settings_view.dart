@@ -1,12 +1,15 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peakflow/db/prefs.dart';
+import 'package:peakflow/debug/mock_data.dart';
 import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/services/notification_service.dart';
 import 'package:share_plus/share_plus.dart';
@@ -25,12 +28,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   final colorMaxController = TextEditingController();
   final titleController = TextEditingController();
   final bodyController = TextEditingController();
+  final debugMockCountController = TextEditingController(
+    text: defaultMockEntryCount.toString(),
+  );
   final NotificationService _notificationService = NotificationService();
 
   bool isDarkMode = true;
   bool hasNotifications = false;
   bool notificationsSupported = true;
   bool isNotificationOperationInProgress = false;
+  bool isDebugDataOperationInProgress = false;
   bool useAutomaticMaxValue = true;
   int notificationHour = 0;
   int notificationMinute = 0;
@@ -52,6 +59,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     colorMaxController.dispose();
     titleController.dispose();
     bodyController.dispose();
+    debugMockCountController.dispose();
     super.dispose();
   }
 
@@ -301,6 +309,63 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           ? 'Reminder updated.'
           : 'Could not update reminder because notification permission is not available.',
     );
+  }
+
+  Future<void> _loadMockData() async {
+    if (!kDebugMode || isDebugDataOperationInProgress) {
+      return;
+    }
+
+    final count = int.tryParse(debugMockCountController.text.trim());
+    if (count == null ||
+        count < minMockEntryCount ||
+        count > maxMockEntryCount) {
+      _showNotificationMessage(
+        'Enter a mock data count between $minMockEntryCount and $maxMockEntryCount.',
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() {
+      isDebugDataOperationInProgress = true;
+    });
+
+    try {
+      await debugLoadMockData(count: count);
+      await ref.read(entryListProvider.notifier).loadEntries();
+      await loadSettings();
+      _showNotificationMessage('Loaded $count mock days.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDebugDataOperationInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _clearDebugData() async {
+    if (!kDebugMode || isDebugDataOperationInProgress) {
+      return;
+    }
+
+    setState(() {
+      isDebugDataOperationInProgress = true;
+    });
+
+    try {
+      await debugClearAllData();
+      await ref.read(entryListProvider.notifier).loadEntries();
+      await loadSettings();
+      _showNotificationMessage('All local data cleared.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDebugDataOperationInProgress = false;
+        });
+      }
+    }
   }
 
   Future<void> displayTimePicker(BuildContext context) async {
@@ -812,6 +877,74 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   ),
                 ),
               ]),
+              if (kDebugMode) ...[
+                _buildSectionDivider(context),
+                _buildSectionLabel(
+                  context,
+                  'Debug',
+                  'Load sample readings for development or clear the local database again.',
+                ),
+                _buildSectionContent([
+                  _buildInfoRow(
+                    context,
+                    icon: Icons.developer_mode_outlined,
+                    title: 'Mock data tools',
+                    description:
+                        'These actions are only visible in debug builds and replace your current local dataset.',
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: TextFormField(
+                      controller: debugMockCountController,
+                      enabled: !isDebugDataOperationInProgress,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'mock days to generate',
+                        hintText: '120',
+                        border: OutlineInputBorder(),
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter(
+                          RegExp(r'[0-9]'),
+                          allow: true,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    child: Text(
+                      'Allowed range: $minMockEntryCount to $maxMockEntryCount days.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: mutedTextColor,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: isDebugDataOperationInProgress
+                              ? null
+                              : _loadMockData,
+                          icon: const Icon(Icons.data_array_outlined),
+                          label: const Text('LOAD MOCK DATA'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: isDebugDataOperationInProgress
+                              ? null
+                              : _clearDebugData,
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: const Text('CLEAR ALL DATA'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ]),
+              ],
               _buildSectionDivider(context),
 
               Center(
