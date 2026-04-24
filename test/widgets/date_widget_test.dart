@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/views/day_view.dart';
@@ -28,15 +29,17 @@ void main() {
     );
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 120,
-              height: 160,
-              child: DateWidget(
-                dayEntry: entry,
-                referenceMaxValue: defaultMaxVolume,
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 120,
+                height: 160,
+                child: DateWidget(
+                  dayEntry: entry,
+                  referenceMaxValue: defaultMaxVolume,
+                ),
               ),
             ),
           ),

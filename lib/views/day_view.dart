@@ -12,6 +12,35 @@ import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/views/edit_day_view.dart';
 import 'package:peakflow/views/edit_reading_view.dart';
 
+Future<bool> showDeletionConfirmationDialog({
+  required BuildContext context,
+  required String title,
+  required String message,
+  required String confirmLabel,
+}) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      );
+    },
+  );
+
+  return confirmed ?? false;
+}
+
 class DayView extends ConsumerStatefulWidget {
   const DayView({super.key, required this.dayEntry});
 
@@ -56,6 +85,83 @@ class _DayViewState extends ConsumerState<DayView> {
         left.day == right.day;
   }
 
+  Future<void> _handleDaySelection(String value, DayEntry dayEntry) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) {
+      return;
+    }
+
+    if (value == "delete") {
+      final confirmed = await showDeletionConfirmationDialog(
+        context: context,
+        title: 'Delete day?',
+        message:
+            'This will permanently delete the day and all readings saved for it.',
+        confirmLabel: 'Delete day',
+      );
+      if (!confirmed || !mounted) {
+        return;
+      }
+      final entriesNotifier = ref.read(entryListProvider.notifier);
+      setState(() {
+        _isDeletingDay = true;
+      });
+      entriesNotifier.removeDay(dayEntry.date);
+      Navigator.of(context).pop();
+      unawaited(_deleteDayAndRefresh(entriesNotifier, dayEntry.date));
+    } else if (value == "edit") {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EditDayView(dayEntry: dayEntry),
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleReadingSelection(
+    String value,
+    DayEntry dayEntry,
+    int readingIndex,
+  ) async {
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) {
+      return;
+    }
+
+    if (value == "delete") {
+      final confirmed = await showDeletionConfirmationDialog(
+        context: context,
+        title: 'Delete reading?',
+        message: 'This will permanently delete this reading.',
+        confirmLabel: 'Delete reading',
+      );
+      if (!confirmed || !mounted) {
+        return;
+      }
+      await deleteReading(
+        dayEntry.date,
+        readingIndex,
+      );
+      await _loadReferenceMaxValue();
+      await ref.read(entryListProvider.notifier).loadEntries();
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+    } else if (value == "edit") {
+      final reading = dayEntry.readings[readingIndex];
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => EditReadingView(
+            reading: reading,
+            readingIndex: readingIndex,
+            dayEntry: dayEntry,
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isDeletingDay) {
@@ -72,42 +178,31 @@ class _DayViewState extends ConsumerState<DayView> {
       appBar: AppBar(
         title: Text(DateFormat("dd.MM.yyyy").format(dayEntry.date)),
         actions: [
-          PopupMenuButton(
+          PopupMenuButton<void>(
             itemBuilder: (_) {
-              return ["edit", "delete"]
-                  .map(
-                    (String choice) => PopupMenuItem(
-                      value: choice,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(choice),
-                          Icon(choice == "edit" ? Icons.edit : Icons.delete),
-                        ],
-                      ),
-                    ),
-                  )
-                  .toList();
-            },
-            onSelected: (value) async {
-              if (value == "delete") {
-                final entriesNotifier = ref.read(entryListProvider.notifier);
-                setState(() {
-                  _isDeletingDay = true;
-                });
-                entriesNotifier.removeDay(dayEntry.date);
-                if (!context.mounted) {
-                  return;
-                }
-                Navigator.of(context).pop();
-                unawaited(_deleteDayAndRefresh(entriesNotifier, dayEntry.date));
-              } else if (value == "edit") {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => EditDayView(dayEntry: dayEntry),
+              return [
+                PopupMenuItem<void>(
+                  onTap: () => unawaited(_handleDaySelection("edit", dayEntry)),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("edit"),
+                      Icon(Icons.edit),
+                    ],
                   ),
-                );
-              }
+                ),
+                PopupMenuItem<void>(
+                  onTap: () =>
+                      unawaited(_handleDaySelection("delete", dayEntry)),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("delete"),
+                      Icon(Icons.delete),
+                    ],
+                  ),
+                ),
+              ];
             },
           ),
         ],
@@ -227,59 +322,50 @@ class _DayViewState extends ConsumerState<DayView> {
                               ),
                             ),
                             Flexible(
-                              child: PopupMenuButton(
+                              child: PopupMenuButton<void>(
                                 itemBuilder: (_) {
-                                  return ["edit", "delete"]
-                                      .map(
-                                        (String choice) => PopupMenuItem(
-                                          value: choice,
-                                          child: Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Text(choice),
-                                              Icon(
-                                                choice == "edit"
-                                                    ? Icons.edit
-                                                    : Icons.delete,
+                                  final readingIndex = dayEntry.readings
+                                      .indexOf(reading);
+                                  return [
+                                    PopupMenuItem<void>(
+                                      onTap: readingIndex < 0
+                                          ? null
+                                          : () => unawaited(
+                                              _handleReadingSelection(
+                                                "edit",
+                                                dayEntry,
+                                                readingIndex,
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                      )
-                                      .toList();
-                                },
-                                onSelected: (value) async {
-                                  if (value == "delete") {
-                                    final readingIndex = dayEntry.readings
-                                        .indexOf(reading);
-                                    if (readingIndex < 0) {
-                                      return;
-                                    }
-                                    await deleteReading(
-                                      dayEntry.date,
-                                      readingIndex,
-                                    );
-                                    await _loadReferenceMaxValue();
-                                    await ref
-                                        .read(entryListProvider.notifier)
-                                        .loadEntries();
-                                    if (!context.mounted) {
-                                      return;
-                                    }
-                                    setState(() {});
-                                  } else if (value == "edit") {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => EditReadingView(
-                                          reading: reading,
-                                          readingIndex: dayEntry.readings
-                                              .indexOf(reading),
-                                          dayEntry: dayEntry,
-                                        ),
+                                            ),
+                                      child: const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("edit"),
+                                          Icon(Icons.edit),
+                                        ],
                                       ),
-                                    );
-                                  }
+                                    ),
+                                    PopupMenuItem<void>(
+                                      onTap: readingIndex < 0
+                                          ? null
+                                          : () => unawaited(
+                                              _handleReadingSelection(
+                                                "delete",
+                                                dayEntry,
+                                                readingIndex,
+                                              ),
+                                            ),
+                                      child: const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text("delete"),
+                                          Icon(Icons.delete),
+                                        ],
+                                      ),
+                                    ),
+                                  ];
                                 },
                               ),
                             ),
