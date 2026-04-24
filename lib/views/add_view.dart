@@ -31,8 +31,8 @@ class _AddViewState extends ConsumerState<AddView> {
   );
 
   void pickDate(BuildContext context) async {
-    final today = DateTime.now();
-    final firstDate = today.add(const Duration(days: -100));
+    final today = DateUtils.dateOnly(DateTime.now());
+    final firstDate = DateTime(2000, 1, 1);
     date =
         await showDatePicker(
           context: context,
