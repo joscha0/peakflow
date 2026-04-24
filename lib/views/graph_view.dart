@@ -372,6 +372,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                               children: [
                                 SingleChildScrollView(
                                   controller: _chartScrollController,
+                                  physics: const ClampingScrollPhysics(),
                                   scrollDirection: Axis.horizontal,
                                   child: SizedBox(
                                     width: chartWidth,
