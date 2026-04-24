@@ -19,24 +19,45 @@ class HomeView extends ConsumerStatefulWidget {
 class _HomeViewState extends ConsumerState<HomeView> {
   int referenceMaxValue = defaultMaxVolume;
   bool sortUp = true;
+  bool isListLoading = true;
 
   @override
   void initState() {
     super.initState();
-    init();
+    _refreshHomeData();
   }
 
-  Future<void> init() async {
-    final loadedReferenceMaxValue = await getColorReferenceMaxValue();
-    final loadedSortUp = await getSortValue();
-    if (!mounted) {
-      return;
+  Future<void> _refreshHomeData() async {
+    if (!isListLoading && mounted) {
+      setState(() {
+        isListLoading = true;
+      });
     }
-    setState(() {
-      referenceMaxValue = loadedReferenceMaxValue;
-      sortUp = loadedSortUp;
-    });
-    ref.read(entryListProvider.notifier).loadEntries();
+
+    final entriesFuture = ref.read(entryListProvider.notifier).loadEntries();
+
+    try {
+      final values = await Future.wait<Object>([
+        getColorReferenceMaxValue(),
+        getSortValue(),
+      ]);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        referenceMaxValue = values[0] as int;
+        sortUp = values[1] as bool;
+      });
+      await entriesFuture;
+    } finally {
+      if (mounted) {
+        setState(() {
+          isListLoading = false;
+        });
+      } else {
+        isListLoading = false;
+      }
+    }
   }
 
   void changeSort() {
@@ -68,7 +89,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
                   await Navigator.of(
                     context,
                   ).push(MaterialPageRoute(builder: (_) => const GraphView()));
-                  await init();
+                  await _refreshHomeData();
                 },
                 icon: const Icon(Icons.bar_chart),
               ),
@@ -77,82 +98,108 @@ class _HomeViewState extends ConsumerState<HomeView> {
                   await Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const SettingsView()),
                   );
-                  await init();
+                  await _refreshHomeData();
                 },
                 icon: const Icon(Icons.settings),
               ),
             ],
           ),
-          body: CustomScrollView(
-            slivers: [
-              for (
-                int yearIndex = 0;
-                yearIndex < yearSections.length;
-                yearIndex++
-              )
-                SliverMainAxisGroup(
-                  slivers: [
-                    SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _SectionHeaderDelegate(
-                        height: 44,
-                        child: _SectionTitle(
-                          title: yearSections[yearIndex].year.toString(),
-                          fontSize: 28,
-                          topPadding: yearIndex == 0 ? 8 : 14,
-                          bottomPadding: 2,
+          body: Stack(
+            children: [
+              CustomScrollView(
+                slivers: [
+                  if (isListLoading && entries.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(),
                         ),
                       ),
-                    ),
-                    for (final monthSection in yearSections[yearIndex].months)
+                    )
+                  else if (entries.isEmpty)
+                    const SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: Text('No data available yet.')),
+                    )
+                  else ...[
+                    for (
+                      int yearIndex = 0;
+                      yearIndex < yearSections.length;
+                      yearIndex++
+                    )
                       SliverMainAxisGroup(
                         slivers: [
                           SliverPersistentHeader(
                             pinned: true,
                             delegate: _SectionHeaderDelegate(
-                              height: 34,
+                              height: 44,
                               child: _SectionTitle(
-                                title: DateFormat(
-                                  "MMMM",
-                                ).format(monthSection.month),
-                                fontSize: 18,
-                                topPadding: 8,
-                                bottomPadding: 6,
+                                title: yearSections[yearIndex].year.toString(),
+                                fontSize: 28,
+                                topPadding: yearIndex == 0 ? 8 : 14,
+                                bottomPadding: 2,
                               ),
                             ),
                           ),
-                          SliverPadding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            sliver: SliverGrid(
-                              delegate: SliverChildBuilderDelegate((
-                                context,
-                                itemIndex,
-                              ) {
-                                final item = monthSection.items[itemIndex];
-                                if (item.dayEntry != null) {
-                                  return DateWidget(
-                                    dayEntry: item.dayEntry!,
-                                    referenceMaxValue: referenceMaxValue,
-                                  );
-                                }
-                                return _GapIndicatorTile(
-                                  gapDays: item.gapDays!,
-                                );
-                              }, childCount: monthSection.items.length),
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: crossAxisCount,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
-                                    childAspectRatio: 0.84,
+                          for (final monthSection
+                              in yearSections[yearIndex].months)
+                            SliverMainAxisGroup(
+                              slivers: [
+                                SliverPersistentHeader(
+                                  pinned: true,
+                                  delegate: _SectionHeaderDelegate(
+                                    height: 34,
+                                    child: _SectionTitle(
+                                      title: DateFormat(
+                                        "MMMM",
+                                      ).format(monthSection.month),
+                                      fontSize: 18,
+                                      topPadding: 8,
+                                      bottomPadding: 6,
+                                    ),
                                   ),
+                                ),
+                                SliverPadding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  sliver: SliverGrid(
+                                    delegate: SliverChildBuilderDelegate((
+                                      context,
+                                      itemIndex,
+                                    ) {
+                                      final item =
+                                          monthSection.items[itemIndex];
+                                      if (item.dayEntry != null) {
+                                        return DateWidget(
+                                          dayEntry: item.dayEntry!,
+                                          referenceMaxValue: referenceMaxValue,
+                                        );
+                                      }
+                                      return _GapIndicatorTile(
+                                        gapDays: item.gapDays!,
+                                      );
+                                    }, childCount: monthSection.items.length),
+                                    gridDelegate:
+                                        SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: crossAxisCount,
+                                          mainAxisSpacing: 8,
+                                          crossAxisSpacing: 8,
+                                          childAspectRatio: 0.84,
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
                         ],
                       ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 84)),
                   ],
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 84)),
+                ],
+              ),
             ],
           ),
           floatingActionButton: FloatingActionButton(
@@ -160,7 +207,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
               await Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const AddView()));
-              await init();
+              await _refreshHomeData();
             },
             child: const Icon(Icons.add),
           ),

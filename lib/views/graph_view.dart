@@ -25,11 +25,13 @@ class _GraphViewState extends ConsumerState<GraphView> {
   static const double _minDayWidth = 18;
   static const double _maxDayWidth = 32;
   static final intl.DateFormat _rangeDateFormat = intl.DateFormat.yMMMMd();
-  static final intl.DateFormat _tooltipDateFormat =
-      intl.DateFormat('dd.MM.yyyy');
+  static final intl.DateFormat _tooltipDateFormat = intl.DateFormat(
+    'dd.MM.yyyy',
+  );
 
   int maxVolume = 850;
   int colorReferenceMaxVolume = 850;
+  bool isLoading = true;
   List<DayEntry> entries = const [];
   List<DayEntry> entriesFiltered = const [];
   DateTimeRange? range;
@@ -117,33 +119,45 @@ class _GraphViewState extends ConsumerState<GraphView> {
   }
 
   Future<void> getData() async {
-    final loadedEntries = await ref.read(entryListProvider.notifier).getEntries();
-    final values = await Future.wait<int>([
+    final entriesFuture = ref.read(entryListProvider.notifier).getEntries();
+    final valuesFuture = Future.wait<int>([
       getDeviceMaxValue(),
       getColorReferenceMaxValue(),
     ]);
+    final loadedEntries = await entriesFuture;
+    final values = await valuesFuture;
     if (!mounted) {
       return;
     }
 
-    final initialRange = loadedEntries.isEmpty
+    final sortedEntries = [...loadedEntries]
+      ..sort((first, second) => first.date.compareTo(second.date));
+
+    final initialRange = sortedEntries.isEmpty
         ? null
-        : DateTimeRange(start: loadedEntries.first.date, end: DateTime.now());
+        : DateTimeRange(
+            start: sortedEntries.first.date,
+            end: sortedEntries.last.date,
+          );
     final initialFilteredEntries = _filterEntriesForRange(
-      loadedEntries,
+      sortedEntries,
       initialRange,
     );
-    final startDate = initialRange?.start ??
-        (initialFilteredEntries.isEmpty ? null : initialFilteredEntries.first.date);
+    final startDate =
+        initialRange?.start ??
+        (initialFilteredEntries.isEmpty
+            ? null
+            : initialFilteredEntries.first.date);
 
     setState(() {
-      entries = loadedEntries;
+      entries = sortedEntries;
       entriesFiltered = initialFilteredEntries;
       range = initialRange;
       maxVolume = values[0];
       colorReferenceMaxVolume = values[1];
       chartPoints = _buildChartPoints(initialFilteredEntries, startDate);
       selectedPoint = null;
+      isLoading = false;
     });
 
     if (initialRange != null) {
@@ -184,7 +198,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
   }
 
   DateTime? get _chartStartDate =>
-      range?.start ?? (entriesFiltered.isEmpty ? null : entriesFiltered.first.date);
+      range?.start ??
+      (entriesFiltered.isEmpty ? null : entriesFiltered.first.date);
 
   DateTime? get _chartEndDate {
     if (range != null) {
@@ -274,8 +289,9 @@ class _GraphViewState extends ConsumerState<GraphView> {
       return;
     }
 
-    final scrollOffset =
-        _chartScrollController.hasClients ? _chartScrollController.offset : 0.0;
+    final scrollOffset = _chartScrollController.hasClients
+        ? _chartScrollController.offset
+        : 0.0;
     final contentX = scrollOffset + localPosition.dx;
     final logicalX = contentX / dayWidth;
     final nearestPoint = _findNearestPoint(logicalX);
@@ -284,7 +300,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
     }
 
     final dx = (nearestPoint.x * dayWidth) - contentX;
-    final dy = _yPositionForValue(nearestPoint.value.toDouble(), chartHeight) -
+    final dy =
+        _yPositionForValue(nearestPoint.value.toDouble(), chartHeight) -
         localPosition.dy;
     final distance = math.sqrt((dx * dx) + (dy * dy));
 
@@ -374,8 +391,10 @@ class _GraphViewState extends ConsumerState<GraphView> {
           return const SizedBox.shrink();
         }
 
-        final left =
-            (pointX - (tooltipWidth / 2)).clamp(4.0, viewportWidth - tooltipWidth - 4);
+        final left = (pointX - (tooltipWidth / 2)).clamp(
+          4.0,
+          viewportWidth - tooltipWidth - 4,
+        );
         final preferredTop = pointY - tooltipHeight - 12;
         final top = preferredTop < 4
             ? (pointY + 12).clamp(4.0, chartHeight - tooltipHeight - 4)
@@ -405,7 +424,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
                 ],
               ),
               child: DefaultTextStyle(
-                style: theme.textTheme.bodySmall?.copyWith(
+                style:
+                    theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface,
                     ) ??
                     const TextStyle(),
@@ -446,151 +466,168 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Data')),
-      body: Column(
-        children: [
-          if (entries.isEmpty)
-            const Expanded(
-              child: Center(child: Text('No data available yet.')),
-            ),
-          if (range != null)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: TextButton(
-                onPressed: () async {
-                  final picked = await showDateRangePicker(
-                    context: context,
-                    lastDate: DateTime.now(),
-                    firstDate: entries.first.date,
-                  );
-                  if (picked != null) {
-                    filterEntries(picked.start, picked.end);
-                  }
-                },
-                child: Text(
-                  'Range: ${_rangeDateFormat.format(range!.start)} - ${_rangeDateFormat.format(range!.end)}',
-                ),
+      body: isLoading
+          ? const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(),
               ),
-            ),
-          if (range != null)
-            AspectRatio(
-              aspectRatio: 1,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: 16,
-                  top: 8,
-                  right: 16,
-                  bottom: 12,
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final plotViewportWidth = math.max(
-                      0.0,
-                      constraints.maxWidth - _yAxisWidth - _yAxisGap,
-                    );
-                    final chartHeight = math.max(
-                      0.0,
-                      constraints.maxHeight -
-                          _bottomTitleReservedSize -
-                          _scrollbarThickness -
-                          _scrollbarTopSpacing,
-                    );
-                    final chartAreaHeight = math.max(
-                      0.0,
-                      constraints.maxHeight -
-                          _scrollbarThickness -
-                          _scrollbarTopSpacing,
-                    );
-                    final dayWidth = _resolveDayWidth(plotViewportWidth);
-                    final chartWidth = math.max(
-                      plotViewportWidth,
-                      _chartRightPadding + ((_chartDaySpan + 1) * dayWidth),
-                    );
+            )
+          : Column(
+              children: [
+                if (entries.isEmpty)
+                  const Expanded(
+                    child: Center(child: Text('No data available yet.')),
+                  ),
+                if (range != null)
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: TextButton(
+                      onPressed: () async {
+                        final picked = await showDateRangePicker(
+                          context: context,
+                          lastDate: DateTime.now(),
+                          firstDate: entries.first.date,
+                        );
+                        if (picked != null) {
+                          filterEntries(picked.start, picked.end);
+                        }
+                      },
+                      child: Text(
+                        'Range: ${_rangeDateFormat.format(range!.start)} - ${_rangeDateFormat.format(range!.end)}',
+                      ),
+                    ),
+                  ),
+                if (range != null)
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        left: 16,
+                        top: 8,
+                        right: 16,
+                        bottom: 12,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final plotViewportWidth = math.max(
+                            0.0,
+                            constraints.maxWidth - _yAxisWidth - _yAxisGap,
+                          );
+                          final chartHeight = math.max(
+                            0.0,
+                            constraints.maxHeight -
+                                _bottomTitleReservedSize -
+                                _scrollbarThickness -
+                                _scrollbarTopSpacing,
+                          );
+                          final chartAreaHeight = math.max(
+                            0.0,
+                            constraints.maxHeight -
+                                _scrollbarThickness -
+                                _scrollbarTopSpacing,
+                          );
+                          final dayWidth = _resolveDayWidth(plotViewportWidth);
+                          final chartWidth = math.max(
+                            plotViewportWidth,
+                            _chartRightPadding +
+                                ((_chartDaySpan + 1) * dayWidth),
+                          );
 
-                    return Row(
-                      children: [
-                        SizedBox(
-                          width: _yAxisWidth,
-                          child: _buildFixedYAxis(theme),
-                        ),
-                        const SizedBox(width: _yAxisGap),
-                        Expanded(
-                          child: Column(
+                          return Row(
                             children: [
                               SizedBox(
-                                height: chartAreaHeight,
-                                child: Stack(
+                                width: _yAxisWidth,
+                                child: _buildFixedYAxis(theme),
+                              ),
+                              const SizedBox(width: _yAxisGap),
+                              Expanded(
+                                child: Column(
                                   children: [
-                                    RepaintBoundary(
-                                      child: SingleChildScrollView(
-                                        controller: _chartScrollController,
-                                        physics: const ClampingScrollPhysics(),
-                                        scrollDirection: Axis.horizontal,
-                                        child: SizedBox(
-                                          width: chartWidth,
-                                          height: chartAreaHeight,
-                                          child: CustomPaint(
-                                            painter: _PeakFlowChartPainter(
-                                              theme: theme,
-                                              points: chartPoints,
-                                              selectedPoint: selectedPoint,
-                                              startDate: _chartStartDate,
-                                              daySpan: _chartDaySpan,
-                                              maxVolume: maxVolume,
-                                              colorReferenceMaxVolume:
-                                                  colorReferenceMaxVolume,
-                                              dayWidth: dayWidth,
-                                              chartRightPadding:
-                                                  _chartRightPadding,
-                                              bottomTitleReservedSize:
-                                                  _bottomTitleReservedSize,
-                                              viewportWidth: plotViewportWidth,
-                                              scrollController:
+                                    SizedBox(
+                                      height: chartAreaHeight,
+                                      child: Stack(
+                                        children: [
+                                          RepaintBoundary(
+                                            child: SingleChildScrollView(
+                                              controller:
                                                   _chartScrollController,
+                                              physics:
+                                                  const ClampingScrollPhysics(),
+                                              scrollDirection: Axis.horizontal,
+                                              child: SizedBox(
+                                                width: chartWidth,
+                                                height: chartAreaHeight,
+                                                child: CustomPaint(
+                                                  painter: _PeakFlowChartPainter(
+                                                    theme: theme,
+                                                    points: chartPoints,
+                                                    selectedPoint:
+                                                        selectedPoint,
+                                                    startDate: _chartStartDate,
+                                                    daySpan: _chartDaySpan,
+                                                    maxVolume: maxVolume,
+                                                    colorReferenceMaxVolume:
+                                                        colorReferenceMaxVolume,
+                                                    dayWidth: dayWidth,
+                                                    chartRightPadding:
+                                                        _chartRightPadding,
+                                                    bottomTitleReservedSize:
+                                                        _bottomTitleReservedSize,
+                                                    viewportWidth:
+                                                        plotViewportWidth,
+                                                    scrollController:
+                                                        _chartScrollController,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned.fill(
-                                      child: GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTapDown:
-                                            (details) => _selectPointAtPosition(
-                                              localPosition:
-                                                  details.localPosition,
-                                              chartHeight: chartHeight,
-                                              dayWidth: dayWidth,
+                                          Positioned.fill(
+                                            child: GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTapDown: (details) =>
+                                                  _selectPointAtPosition(
+                                                    localPosition:
+                                                        details.localPosition,
+                                                    chartHeight: chartHeight,
+                                                    dayWidth: dayWidth,
+                                                  ),
+                                              onHorizontalDragUpdate:
+                                                  (details) => _dragChartBy(
+                                                    details.delta.dx,
+                                                  ),
                                             ),
-                                        onHorizontalDragUpdate: (details) =>
-                                            _dragChartBy(details.delta.dx),
+                                          ),
+                                          _buildTooltipOverlay(
+                                            theme: theme,
+                                            viewportWidth: plotViewportWidth,
+                                            chartHeight: chartHeight,
+                                            dayWidth: dayWidth,
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                    _buildTooltipOverlay(
+                                    const SizedBox(
+                                      height: _scrollbarTopSpacing,
+                                    ),
+                                    _ChartScrollbar(
+                                      controller: _chartScrollController,
                                       theme: theme,
-                                      viewportWidth: plotViewportWidth,
-                                      chartHeight: chartHeight,
-                                      dayWidth: dayWidth,
+                                      thickness: _scrollbarThickness,
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: _scrollbarTopSpacing),
-                              _ChartScrollbar(
-                                controller: _chartScrollController,
-                                theme: theme,
-                                thickness: _scrollbarThickness,
-                              ),
                             ],
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }
@@ -630,10 +667,12 @@ class _ChartScrollbar extends StatelessWidget {
             animation: controller,
             builder: (context, child) {
               final hasClients = controller.hasClients;
-              final maxScrollExtent =
-                  hasClients ? controller.position.maxScrollExtent : 0.0;
-              final viewportWidth =
-                  hasClients ? controller.position.viewportDimension : constraints.maxWidth;
+              final maxScrollExtent = hasClients
+                  ? controller.position.maxScrollExtent
+                  : 0.0;
+              final viewportWidth = hasClients
+                  ? controller.position.viewportDimension
+                  : constraints.maxWidth;
               final contentWidth = viewportWidth + maxScrollExtent;
               final minThumbWidth = math.min(constraints.maxWidth, 72.0);
               final thumbWidth = contentWidth <= 0
@@ -642,34 +681,48 @@ class _ChartScrollbar extends StatelessWidget {
                       minThumbWidth,
                       constraints.maxWidth * (viewportWidth / contentWidth),
                     );
-              final availableTravel = math.max(0.0, constraints.maxWidth - thumbWidth);
+              final availableTravel = math.max(
+                0.0,
+                constraints.maxWidth - thumbWidth,
+              );
               final thumbLeft = maxScrollExtent <= 0 || availableTravel == 0
                   ? 0.0
                   : availableTravel * (controller.offset / maxScrollExtent);
 
               void jumpToTrackPosition(double localDx) {
-                if (!hasClients || maxScrollExtent <= 0 || availableTravel == 0) {
+                if (!hasClients ||
+                    maxScrollExtent <= 0 ||
+                    availableTravel == 0) {
                   return;
                 }
-                final nextThumbLeft =
-                    (localDx - (thumbWidth / 2)).clamp(0.0, availableTravel);
-                final nextOffset = (nextThumbLeft / availableTravel) * maxScrollExtent;
+                final nextThumbLeft = (localDx - (thumbWidth / 2)).clamp(
+                  0.0,
+                  availableTravel,
+                );
+                final nextOffset =
+                    (nextThumbLeft / availableTravel) * maxScrollExtent;
                 controller.jumpTo(nextOffset.clamp(0.0, maxScrollExtent));
               }
 
               void dragBy(double deltaDx) {
-                if (!hasClients || maxScrollExtent <= 0 || availableTravel == 0) {
+                if (!hasClients ||
+                    maxScrollExtent <= 0 ||
+                    availableTravel == 0) {
                   return;
                 }
-                final scrollDelta = deltaDx * (maxScrollExtent / availableTravel);
-                final nextOffset =
-                    (controller.offset + scrollDelta).clamp(0.0, maxScrollExtent);
+                final scrollDelta =
+                    deltaDx * (maxScrollExtent / availableTravel);
+                final nextOffset = (controller.offset + scrollDelta).clamp(
+                  0.0,
+                  maxScrollExtent,
+                );
                 controller.jumpTo(nextOffset);
               }
 
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTapDown: (details) => jumpToTrackPosition(details.localPosition.dx),
+                onTapDown: (details) =>
+                    jumpToTrackPosition(details.localPosition.dx),
                 onHorizontalDragUpdate: (details) => dragBy(details.delta.dx),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -693,11 +746,15 @@ class _ChartScrollbar extends StatelessWidget {
                             color: theme.colorScheme.primary,
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.9),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.9,
+                              ),
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.28),
+                                color: theme.colorScheme.primary.withValues(
+                                  alpha: 0.28,
+                                ),
                                 blurRadius: 10,
                                 offset: const Offset(0, 3),
                               ),
@@ -714,9 +771,13 @@ class _ChartScrollbar extends StatelessWidget {
                               Container(
                                 width: 18,
                                 height: 4,
-                                margin: const EdgeInsets.symmetric(horizontal: 2),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.onPrimary.withValues(alpha: 0.7),
+                                  color: theme.colorScheme.onPrimary.withValues(
+                                    alpha: 0.7,
+                                  ),
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                               ),
@@ -757,8 +818,9 @@ class _PeakFlowChartPainter extends CustomPainter {
     required this.scrollController,
   }) : super(repaint: scrollController);
 
-  static final intl.DateFormat _monthLabelDateFormat =
-      intl.DateFormat('MMM yyyy');
+  static final intl.DateFormat _monthLabelDateFormat = intl.DateFormat(
+    'MMM yyyy',
+  );
 
   final ThemeData theme;
   final List<_ChartPoint> points;
@@ -780,7 +842,9 @@ class _PeakFlowChartPainter extends CustomPainter {
       return;
     }
 
-    final scrollOffset = scrollController.hasClients ? scrollController.offset : 0.0;
+    final scrollOffset = scrollController.hasClients
+        ? scrollController.offset
+        : 0.0;
     final visibleLeft = scrollOffset.clamp(0.0, size.width);
     final visibleRight = (scrollOffset + viewportWidth).clamp(0.0, size.width);
 
@@ -903,7 +967,9 @@ class _PeakFlowChartPainter extends CustomPainter {
         Offset(visibleLeft, y),
         Offset(visibleRight, y),
         Paint()
-          ..color = dividerColor.withValues(alpha: value % 100 == 0 ? 0.75 : 0.35)
+          ..color = dividerColor.withValues(
+            alpha: value % 100 == 0 ? 0.75 : 0.35,
+          )
           ..strokeWidth = value % 100 == 0 ? 1.4 : 0.8,
       );
     }
@@ -926,14 +992,17 @@ class _PeakFlowChartPainter extends CustomPainter {
       if (x < visibleLeft - dayWidth || x > visibleRight + dayWidth) {
         continue;
       }
-      final isMonthBoundary = chartStartDate != null &&
+      final isMonthBoundary =
+          chartStartDate != null &&
           day <= daySpan &&
           chartStartDate.add(Duration(days: day)).day == 1;
       canvas.drawLine(
         Offset(x, 0),
         Offset(x, plotHeight),
         Paint()
-          ..color = dividerColor.withValues(alpha: isMonthBoundary ? 0.52 : 0.22)
+          ..color = dividerColor.withValues(
+            alpha: isMonthBoundary ? 0.52 : 0.22,
+          )
           ..strokeWidth = isMonthBoundary ? 1.4 : 0.8,
       );
     }
@@ -954,7 +1023,10 @@ class _PeakFlowChartPainter extends CustomPainter {
     final logicalMinX = (visibleLeft / dayWidth) - 1;
     final logicalMaxX = (visibleRight / dayWidth) + 1;
     final startIndex = math.max(0, _lowerBound(points, logicalMinX) - 1);
-    final endIndex = math.min(points.length, _upperBound(points, logicalMaxX) + 1);
+    final endIndex = math.min(
+      points.length,
+      _upperBound(points, logicalMaxX) + 1,
+    );
     if (startIndex >= endIndex) {
       return;
     }
@@ -962,7 +1034,10 @@ class _PeakFlowChartPainter extends CustomPainter {
     final path = Path();
     for (int index = startIndex; index < endIndex; index++) {
       final point = points[index];
-      final offset = Offset(point.x * dayWidth, _yForValue(point.value.toDouble(), plotHeight));
+      final offset = Offset(
+        point.x * dayWidth,
+        _yForValue(point.value.toDouble(), plotHeight),
+      );
       if (index == startIndex) {
         path.moveTo(offset.dx, offset.dy);
       } else {
@@ -989,7 +1064,10 @@ class _PeakFlowChartPainter extends CustomPainter {
       for (int index = startIndex; index < endIndex; index++) {
         final point = points[index];
         canvas.drawCircle(
-          Offset(point.x * dayWidth, _yForValue(point.value.toDouble(), plotHeight)),
+          Offset(
+            point.x * dayWidth,
+            _yForValue(point.value.toDouble(), plotHeight),
+          ),
           2.8,
           dotPaint,
         );
@@ -1050,7 +1128,11 @@ class _PeakFlowChartPainter extends CustomPainter {
       ..color = theme.dividerColor.withValues(alpha: 0.7)
       ..strokeWidth = 1;
 
-    canvas.drawLine(Offset(visibleLeft, 0), Offset(visibleRight, 0), borderPaint);
+    canvas.drawLine(
+      Offset(visibleLeft, 0),
+      Offset(visibleRight, 0),
+      borderPaint,
+    );
     canvas.drawLine(
       Offset(visibleLeft, plotHeight),
       Offset(visibleRight, plotHeight),
@@ -1094,7 +1176,12 @@ class _PeakFlowChartPainter extends CustomPainter {
 
     canvas.save();
     canvas.clipRect(
-      Rect.fromLTRB(visibleLeft, plotHeight, visibleRight, plotHeight + bottomTitleReservedSize),
+      Rect.fromLTRB(
+        visibleLeft,
+        plotHeight,
+        visibleRight,
+        plotHeight + bottomTitleReservedSize,
+      ),
     );
 
     canvas.drawLine(
@@ -1108,10 +1195,7 @@ class _PeakFlowChartPainter extends CustomPainter {
       final centerX = x + (dayWidth / 2);
       final labelDate = chartStartDate.add(Duration(days: day));
       final textPainter = TextPainter(
-        text: TextSpan(
-          text: labelDate.day.toString(),
-          style: labelStyle,
-        ),
+        text: TextSpan(text: labelDate.day.toString(), style: labelStyle),
         textDirection: TextDirection.ltr,
         maxLines: 1,
       )..layout(maxWidth: dayWidth);
@@ -1146,7 +1230,8 @@ class _PeakFlowChartPainter extends CustomPainter {
       }
 
       final date = chartStartDate.add(Duration(days: day));
-      final isNewMonth = segmentDate == null ||
+      final isNewMonth =
+          segmentDate == null ||
           segmentDate.month != date.month ||
           segmentDate.year != date.year;
       if (isNewMonth) {
@@ -1182,9 +1267,12 @@ class _PeakFlowChartPainter extends CustomPainter {
     required int endDayExclusive,
     required DateTime monthDate,
   }) {
-    final left = (startDay * dayWidth).clamp(visibleLeft, visibleRight).toDouble();
-    final right =
-        (endDayExclusive * dayWidth).clamp(visibleLeft, visibleRight).toDouble();
+    final left = (startDay * dayWidth)
+        .clamp(visibleLeft, visibleRight)
+        .toDouble();
+    final right = (endDayExclusive * dayWidth)
+        .clamp(visibleLeft, visibleRight)
+        .toDouble();
     if (right <= left) {
       return;
     }
