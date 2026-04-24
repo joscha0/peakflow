@@ -31,7 +31,6 @@ dependencies:
   cupertino_icons: ^1.0.8
   drift: ^2.32.1
   drift_flutter: ^0.3.0
-  fl_chart: ^1.2.0
   flutter:
     sdk: flutter
   flutter_local_notifications: ^19.5.0
