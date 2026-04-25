@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -343,7 +344,9 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
 
   late _TimelineIndex _timeline;
   final ValueNotifier<int?> _activeYear = ValueNotifier<int?>(null);
+  double? _pendingScrollOffset;
   bool _layoutRefreshScheduled = false;
+  bool _scrollJumpScheduled = false;
 
   @override
   void initState() {
@@ -527,9 +530,39 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
         .clamp(0.0, availableHeight)
         .toDouble();
     final fraction = availableHeight == 0 ? 0.0 : handleTop / availableHeight;
-    widget.controller.jumpTo(
-      widget.controller.position.maxScrollExtent * fraction,
-    );
+    _scheduleScrollJump(widget.controller.position.maxScrollExtent * fraction);
+  }
+
+  void _scheduleScrollJump(double targetOffset) {
+    _pendingScrollOffset = targetOffset;
+    if (_scrollJumpScheduled) {
+      return;
+    }
+
+    _scrollJumpScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _scrollJumpScheduled = false;
+      if (!mounted || !widget.controller.hasClients) {
+        _pendingScrollOffset = null;
+        return;
+      }
+
+      final offset = _pendingScrollOffset;
+      _pendingScrollOffset = null;
+      if (offset == null) {
+        return;
+      }
+
+      final position = widget.controller.position;
+      final target = offset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((widget.controller.offset - target).abs() < 0.5) {
+        return;
+      }
+
+      widget.controller.jumpTo(target);
+    });
   }
 }
 
