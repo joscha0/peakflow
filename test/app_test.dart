@@ -10,7 +10,8 @@ void main() {
 
   testWidgets('app renders home screen', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: App()));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.text('PEAK FLOW'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);

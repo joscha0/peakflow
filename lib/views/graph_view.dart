@@ -7,6 +7,8 @@ import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 
+enum _GraphRangePreset { all, last3Months, last12Months, custom }
+
 class GraphView extends ConsumerStatefulWidget {
   const GraphView({super.key});
 
@@ -35,6 +37,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
   List<DayEntry> entries = const [];
   List<DayEntry> entriesFiltered = const [];
   DateTimeRange? range;
+  _GraphRangePreset selectedRangePreset = _GraphRangePreset.all;
   List<_ChartPoint> chartPoints = const [];
   _ChartPoint? selectedPoint;
 
@@ -153,6 +156,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
       entries = sortedEntries;
       entriesFiltered = initialFilteredEntries;
       range = initialRange;
+      selectedRangePreset = _GraphRangePreset.all;
       maxVolume = values[0];
       colorReferenceMaxVolume = values[1];
       chartPoints = _buildChartPoints(initialFilteredEntries, startDate);
@@ -184,17 +188,227 @@ class _GraphViewState extends ConsumerState<GraphView> {
         .toList(growable: false);
   }
 
-  void filterEntries(DateTime start, DateTime end) {
-    final nextRange = DateTimeRange(start: start, end: end);
-    final filteredEntries = _filterEntriesForRange(entries, nextRange);
+  DateTime _normalizeDate(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  DateTimeRange? get _fullDataRange {
+    if (entries.isEmpty) {
+      return null;
+    }
+    return DateTimeRange(start: entries.first.date, end: entries.last.date);
+  }
+
+  DateTime _subtractMonths(DateTime date, int months) {
+    final normalizedDate = _normalizeDate(date);
+    final totalMonths = (normalizedDate.year * 12) + normalizedDate.month - 1;
+    final targetTotalMonths = totalMonths - months;
+    final targetYear = targetTotalMonths ~/ 12;
+    final targetMonth = (targetTotalMonths % 12) + 1;
+    final targetDay = math.min(
+      normalizedDate.day,
+      DateUtils.getDaysInMonth(targetYear, targetMonth),
+    );
+    return DateTime(targetYear, targetMonth, targetDay);
+  }
+
+  DateTimeRange? _buildTrailingMonthsRange(int months) {
+    final fullRange = _fullDataRange;
+    if (fullRange == null) {
+      return null;
+    }
+
+    final trailingStart = _subtractMonths(fullRange.end, months);
+    return DateTimeRange(
+      start: trailingStart.isBefore(fullRange.start)
+          ? fullRange.start
+          : trailingStart,
+      end: fullRange.end,
+    );
+  }
+
+  void _applyRange(
+    DateTimeRange nextRange, {
+    required _GraphRangePreset preset,
+  }) {
+    final normalizedStart = _normalizeDate(nextRange.start);
+    final normalizedEnd = _normalizeDate(nextRange.end);
+    final safeRange = normalizedStart.isAfter(normalizedEnd)
+        ? DateTimeRange(start: normalizedEnd, end: normalizedEnd)
+        : DateTimeRange(start: normalizedStart, end: normalizedEnd);
+    final filteredEntries = _filterEntriesForRange(entries, safeRange);
+
+    if (filteredEntries.isEmpty) {
+      return;
+    }
+
+    final chartStart = filteredEntries.first.date;
 
     setState(() {
-      range = nextRange;
+      range = safeRange;
+      selectedRangePreset = preset;
       entriesFiltered = filteredEntries;
-      chartPoints = _buildChartPoints(filteredEntries, nextRange.start);
+      chartPoints = _buildChartPoints(filteredEntries, chartStart);
       selectedPoint = null;
     });
     _scheduleScrollToEnd();
+  }
+
+  void _selectAllRange() {
+    final fullRange = _fullDataRange;
+    if (fullRange == null) {
+      return;
+    }
+    _applyRange(fullRange, preset: _GraphRangePreset.all);
+  }
+
+  void _selectTrailingMonths(int months) {
+    final nextRange = _buildTrailingMonthsRange(months);
+    if (nextRange == null) {
+      return;
+    }
+
+    _applyRange(
+      nextRange,
+      preset: months == 3
+          ? _GraphRangePreset.last3Months
+          : _GraphRangePreset.last12Months,
+    );
+  }
+
+  Future<void> _pickCustomRange() async {
+    final fullRange = _fullDataRange;
+    if (fullRange == null) {
+      return;
+    }
+
+    final picked = await showModalBottomSheet<DateTimeRange>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CustomRangeSheet(
+        fullRange: fullRange,
+        initialRange: range ?? fullRange,
+        dateFormat: _rangeDateFormat,
+      ),
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    _applyRange(picked, preset: _GraphRangePreset.custom);
+  }
+
+  String get _activeRangeLabel {
+    final activeRange = range;
+    if (activeRange == null) {
+      return '';
+    }
+    return '${_rangeDateFormat.format(activeRange.start)} - ${_rangeDateFormat.format(activeRange.end)}';
+  }
+
+  Widget _buildRangePresetChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+  }) {
+    final theme = Theme.of(context);
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      showCheckmark: false,
+      labelStyle: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: selected ? theme.colorScheme.onPrimary : null,
+      ),
+      selectedColor: theme.colorScheme.primary,
+      backgroundColor: theme.colorScheme.surfaceContainerHighest.withValues(
+        alpha: 0.62,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      side: BorderSide(
+        color: selected
+            ? theme.colorScheme.primary
+            : theme.dividerColor.withValues(alpha: 0.4),
+      ),
+      onSelected: (_) => onSelected(),
+    );
+  }
+
+  Widget _buildRangeControls(ThemeData theme) {
+    final activeRange = range;
+    if (activeRange == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Date Range',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _activeRangeLabel,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildRangePresetChip(
+                label: 'All',
+                selected: selectedRangePreset == _GraphRangePreset.all,
+                onSelected: _selectAllRange,
+              ),
+              _buildRangePresetChip(
+                label: 'Last 3 Months',
+                selected: selectedRangePreset == _GraphRangePreset.last3Months,
+                onSelected: () => _selectTrailingMonths(3),
+              ),
+              _buildRangePresetChip(
+                label: 'Last 12 Months',
+                selected: selectedRangePreset == _GraphRangePreset.last12Months,
+                onSelected: () => _selectTrailingMonths(12),
+              ),
+              OutlinedButton.icon(
+                onPressed: _pickCustomRange,
+                icon: const Icon(Icons.date_range_rounded, size: 18),
+                label: const Text('Custom'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: theme.colorScheme.onSurface,
+                  backgroundColor:
+                      selectedRangePreset == _GraphRangePreset.custom
+                      ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  side: BorderSide(
+                    color: selectedRangePreset == _GraphRangePreset.custom
+                        ? theme.colorScheme.primary
+                        : theme.dividerColor.withValues(alpha: 0.5),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 11,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   DateTime? get _chartStartDate =>
@@ -480,25 +694,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                   const Expanded(
                     child: Center(child: Text('No data available yet.')),
                   ),
-                if (range != null)
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: TextButton(
-                      onPressed: () async {
-                        final picked = await showDateRangePicker(
-                          context: context,
-                          lastDate: DateTime.now(),
-                          firstDate: entries.first.date,
-                        );
-                        if (picked != null) {
-                          filterEntries(picked.start, picked.end);
-                        }
-                      },
-                      child: Text(
-                        'Range: ${_rangeDateFormat.format(range!.start)} - ${_rangeDateFormat.format(range!.end)}',
-                      ),
-                    ),
-                  ),
+                if (range != null) _buildRangeControls(theme),
                 if (range != null)
                   AspectRatio(
                     aspectRatio: 1,
@@ -628,6 +824,247 @@ class _GraphViewState extends ConsumerState<GraphView> {
                   ),
               ],
             ),
+    );
+  }
+}
+
+class _CustomRangeSheet extends StatefulWidget {
+  const _CustomRangeSheet({
+    required this.fullRange,
+    required this.initialRange,
+    required this.dateFormat,
+  });
+
+  final DateTimeRange fullRange;
+  final DateTimeRange initialRange;
+  final intl.DateFormat dateFormat;
+
+  @override
+  State<_CustomRangeSheet> createState() => _CustomRangeSheetState();
+}
+
+class _CustomRangeSheetState extends State<_CustomRangeSheet> {
+  late DateTime start;
+  late DateTime end;
+  bool isEditingStart = true;
+
+  @override
+  void initState() {
+    super.initState();
+    start = _normalizeDate(widget.initialRange.start);
+    end = _normalizeDate(widget.initialRange.end);
+  }
+
+  DateTime _normalizeDate(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  void _selectBoundary(bool editingStart) {
+    setState(() {
+      isEditingStart = editingStart;
+    });
+  }
+
+  void _onDateChanged(DateTime value) {
+    final normalizedValue = _normalizeDate(value);
+    setState(() {
+      if (isEditingStart) {
+        start = normalizedValue;
+        if (start.isAfter(end)) {
+          end = start;
+        }
+      } else {
+        end = normalizedValue;
+        if (end.isBefore(start)) {
+          start = end;
+        }
+      }
+    });
+  }
+
+  Widget _buildBoundaryButton({
+    required ThemeData theme,
+    required String label,
+    required DateTime value,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.14)
+                : theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.52,
+                  ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.dividerColor.withValues(alpha: 0.45),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.dateFormat.format(value),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: selected ? theme.colorScheme.primary : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final activeDate = isEditingStart ? start : end;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.16),
+                blurRadius: 24,
+                offset: const Offset(0, -6),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: theme.dividerColor.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Custom Range',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Choose start and end dates for the chart.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.7,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _buildBoundaryButton(
+                      theme: theme,
+                      label: 'Start',
+                      value: start,
+                      selected: isEditingStart,
+                      onTap: () => _selectBoundary(true),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildBoundaryButton(
+                      theme: theme,
+                      label: 'End',
+                      value: end,
+                      selected: !isEditingStart,
+                      onTap: () => _selectBoundary(false),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: ColoredBox(
+                    color: theme.colorScheme.surfaceContainerLowest,
+                    child: CalendarDatePicker(
+                      key: ValueKey(
+                        '${isEditingStart ? 'start' : 'end'}-${activeDate.toIso8601String()}',
+                      ),
+                      initialDate: activeDate,
+                      firstDate: widget.fullRange.start,
+                      lastDate: widget.fullRange.end,
+                      currentDate: activeDate,
+                      onDateChanged: _onDateChanged,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.of(
+                          context,
+                        ).pop(DateTimeRange(start: start, end: end));
+                      },
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
