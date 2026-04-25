@@ -341,45 +341,86 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
   static const double _railWidth = 56;
   static const double _rightInset = 6;
 
+  late _TimelineIndex _timeline;
+  final ValueNotifier<int?> _activeYear = ValueNotifier<int?>(null);
+  bool _layoutRefreshScheduled = false;
+
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_handleScrollChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _handleScrollChange());
+    _timeline = _buildTimeline();
+    widget.controller.addListener(_updateActiveYear);
+    _scheduleLayoutRefresh();
   }
 
   @override
   void didUpdateWidget(covariant _TimelineScrollOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_handleScrollChange);
-      widget.controller.addListener(_handleScrollChange);
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _handleScrollChange(),
-      );
+      oldWidget.controller.removeListener(_updateActiveYear);
+      widget.controller.addListener(_updateActiveYear);
     }
+
+    if (oldWidget.yearSections != widget.yearSections ||
+        oldWidget.crossAxisCount != widget.crossAxisCount ||
+        oldWidget.viewportWidth != widget.viewportWidth) {
+      _timeline = _buildTimeline();
+    }
+
+    _scheduleLayoutRefresh();
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_handleScrollChange);
+    widget.controller.removeListener(_updateActiveYear);
+    _activeYear.dispose();
     super.dispose();
   }
 
-  void _handleScrollChange() {
-    if (mounted) {
+  _TimelineIndex _buildTimeline() {
+    return _TimelineIndex.fromSections(
+      yearSections: widget.yearSections,
+      crossAxisCount: widget.crossAxisCount,
+      viewportWidth: widget.viewportWidth,
+    );
+  }
+
+  void _scheduleLayoutRefresh() {
+    if (_layoutRefreshScheduled) {
+      return;
+    }
+
+    _layoutRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _layoutRefreshScheduled = false;
+      if (!mounted) {
+        return;
+      }
+
+      _updateActiveYear();
       setState(() {});
+    });
+  }
+
+  void _updateActiveYear() {
+    if (!widget.controller.hasClients ||
+        widget.controller.position.maxScrollExtent <= 0) {
+      return;
+    }
+
+    final maxScrollExtent = widget.controller.position.maxScrollExtent;
+    final fraction = (widget.controller.offset / maxScrollExtent)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final year = _timeline.monthForFraction(fraction).date.year;
+    if (_activeYear.value != year) {
+      _activeYear.value = year;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final timeline = _TimelineIndex.fromSections(
-      yearSections: widget.yearSections,
-      crossAxisCount: widget.crossAxisCount,
-      viewportWidth: widget.viewportWidth,
-    );
 
     return Positioned.fill(
       child: Align(
@@ -391,13 +432,7 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
               return const SizedBox.shrink();
             }
 
-            final maxScrollExtent = widget.controller.position.maxScrollExtent;
-            final fraction = (widget.controller.offset / maxScrollExtent)
-                .clamp(0.0, 1.0)
-                .toDouble();
             final availableHeight = constraints.maxHeight - _handleHeight;
-            final handleTop = availableHeight * fraction;
-            final currentMonth = timeline.monthForFraction(fraction);
 
             return SizedBox(
               width: _railWidth,
@@ -440,48 +475,36 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
                         ),
                       ),
                     ),
-                    for (final marker in timeline.yearMarkers)
+                    for (final marker in _timeline.yearMarkers)
                       Positioned(
                         top: (marker.fraction * availableHeight)
                             .clamp(0.0, availableHeight)
                             .toDouble(),
                         right: 28,
-                        child: AnimatedOpacity(
-                          opacity: widget.isDragging ? 1 : 0,
-                          duration: const Duration(milliseconds: 120),
-                          child: _TimelinePill(
-                            key: ValueKey(
-                              'homeTimelineYearMarker-${marker.year}',
-                            ),
-                            label: marker.year.toString(),
-                            isActive: currentMonth.date.year == marker.year,
-                            compact: true,
-                          ),
+                        child: ValueListenableBuilder<int?>(
+                          valueListenable: _activeYear,
+                          builder: (context, activeYear, child) {
+                            return AnimatedOpacity(
+                              opacity: widget.isDragging ? 1 : 0,
+                              duration: const Duration(milliseconds: 120),
+                              child: _TimelinePill(
+                                key: ValueKey(
+                                  'homeTimelineYearMarker-${marker.year}',
+                                ),
+                                label: marker.year.toString(),
+                                isActive: activeYear == marker.year,
+                                compact: true,
+                              ),
+                            );
+                          },
                         ),
                       ),
-                    Positioned(
-                      top: handleTop,
-                      right: _rightInset,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedOpacity(
-                            opacity: widget.isDragging ? 1 : 0,
-                            duration: const Duration(milliseconds: 120),
-                            child: _TimelinePill(
-                              key: const ValueKey('homeTimelineMonthLabel'),
-                              label: DateFormat(
-                                'MMM yyyy',
-                              ).format(currentMonth.date),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          _TimelineHandle(
-                            key: const ValueKey('homeTimelineHandle'),
-                            isDragging: widget.isDragging,
-                          ),
-                        ],
-                      ),
+                    _TimelineHandlePosition(
+                      controller: widget.controller,
+                      timeline: _timeline,
+                      availableHeight: availableHeight,
+                      isDragging: widget.isDragging,
+                      rightInset: _rightInset,
                     ),
                   ],
                 ),
@@ -506,6 +529,67 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
     final fraction = availableHeight == 0 ? 0.0 : handleTop / availableHeight;
     widget.controller.jumpTo(
       widget.controller.position.maxScrollExtent * fraction,
+    );
+  }
+}
+
+class _TimelineHandlePosition extends StatelessWidget {
+  final ScrollController controller;
+  final _TimelineIndex timeline;
+  final double availableHeight;
+  final bool isDragging;
+  final double rightInset;
+
+  const _TimelineHandlePosition({
+    required this.controller,
+    required this.timeline,
+    required this.availableHeight,
+    required this.isDragging,
+    required this.rightInset,
+  });
+
+  static final DateFormat _monthYearFormat = DateFormat('MMM yyyy');
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        if (!controller.hasClients ||
+            controller.position.maxScrollExtent <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final maxScrollExtent = controller.position.maxScrollExtent;
+        final fraction = (controller.offset / maxScrollExtent)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        final handleTop = availableHeight * fraction;
+        final currentMonth = timeline.monthForFraction(fraction);
+
+        return Positioned(
+          top: handleTop,
+          right: rightInset,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedOpacity(
+                opacity: isDragging ? 1 : 0,
+                duration: const Duration(milliseconds: 120),
+                child: _TimelinePill(
+                  key: const ValueKey('homeTimelineMonthLabel'),
+                  label: _monthYearFormat.format(currentMonth.date),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _TimelineHandle(
+                key: const ValueKey('homeTimelineHandle'),
+                isDragging: isDragging,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
