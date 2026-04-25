@@ -17,9 +17,11 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
+  final ScrollController _scrollController = ScrollController();
   int referenceMaxValue = defaultMaxVolume;
   bool sortUp = true;
   bool isListLoading = true;
+  bool isTimelineDragging = false;
 
   @override
   void initState() {
@@ -69,6 +71,12 @@ class _HomeViewState extends ConsumerState<HomeView> {
   }
 
   @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final entries = ref.watch(entryListProvider);
     final yearSections = _buildSections(entries);
@@ -107,6 +115,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
           body: Stack(
             children: [
               CustomScrollView(
+                controller: _scrollController,
                 slivers: [
                   if (isListLoading && entries.isEmpty)
                     const SliverFillRemaining(
@@ -200,6 +209,22 @@ class _HomeViewState extends ConsumerState<HomeView> {
                   ],
                 ],
               ),
+              if (entries.isNotEmpty)
+                _TimelineScrollOverlay(
+                  controller: _scrollController,
+                  yearSections: yearSections,
+                  crossAxisCount: crossAxisCount,
+                  viewportWidth: constraints.maxWidth,
+                  isDragging: isTimelineDragging,
+                  onDragStateChanged: (isDragging) {
+                    if (isTimelineDragging == isDragging) {
+                      return;
+                    }
+                    setState(() {
+                      isTimelineDragging = isDragging;
+                    });
+                  },
+                ),
             ],
           ),
           floatingActionButton: FloatingActionButton(
@@ -289,6 +314,401 @@ class _HomeSectionItem {
   }
 }
 
+class _TimelineScrollOverlay extends StatefulWidget {
+  final ScrollController controller;
+  final List<_HomeYearSection> yearSections;
+  final int crossAxisCount;
+  final double viewportWidth;
+  final bool isDragging;
+  final ValueChanged<bool> onDragStateChanged;
+
+  const _TimelineScrollOverlay({
+    required this.controller,
+    required this.yearSections,
+    required this.crossAxisCount,
+    required this.viewportWidth,
+    required this.isDragging,
+    required this.onDragStateChanged,
+  });
+
+  @override
+  State<_TimelineScrollOverlay> createState() => _TimelineScrollOverlayState();
+}
+
+class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
+  static const double _handleHeight = 44;
+  static const double _handleWidth = 12;
+  static const double _railWidth = 56;
+  static const double _rightInset = 6;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_handleScrollChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleScrollChange());
+  }
+
+  @override
+  void didUpdateWidget(covariant _TimelineScrollOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleScrollChange);
+      widget.controller.addListener(_handleScrollChange);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _handleScrollChange(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleScrollChange);
+    super.dispose();
+  }
+
+  void _handleScrollChange() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final timeline = _TimelineIndex.fromSections(
+      yearSections: widget.yearSections,
+      crossAxisCount: widget.crossAxisCount,
+      viewportWidth: widget.viewportWidth,
+    );
+
+    return Positioned.fill(
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (!widget.controller.hasClients ||
+                widget.controller.position.maxScrollExtent <= 0) {
+              return const SizedBox.shrink();
+            }
+
+            final maxScrollExtent = widget.controller.position.maxScrollExtent;
+            final fraction = (widget.controller.offset / maxScrollExtent)
+                .clamp(0.0, 1.0)
+                .toDouble();
+            final availableHeight = constraints.maxHeight - _handleHeight;
+            final handleTop = availableHeight * fraction;
+            final currentMonth = timeline.monthForFraction(fraction);
+
+            return SizedBox(
+              width: _railWidth,
+              height: constraints.maxHeight,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTapDown: (details) => _jumpToLocalPosition(
+                  details.localPosition.dy,
+                  constraints.maxHeight,
+                ),
+                onVerticalDragStart: (details) {
+                  widget.onDragStateChanged(true);
+                  _jumpToLocalPosition(
+                    details.localPosition.dy,
+                    constraints.maxHeight,
+                  );
+                },
+                onVerticalDragUpdate: (details) => _jumpToLocalPosition(
+                  details.localPosition.dy,
+                  constraints.maxHeight,
+                ),
+                onVerticalDragEnd: (_) => widget.onDragStateChanged(false),
+                onVerticalDragCancel: () => widget.onDragStateChanged(false),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      top: 8,
+                      bottom: 8,
+                      right: _rightInset + (_handleWidth / 2) - 1,
+                      child: AnimatedOpacity(
+                        opacity: widget.isDragging ? 0.28 : 0.16,
+                        duration: const Duration(milliseconds: 140),
+                        child: Container(
+                          width: 2,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.onSurface,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                    ),
+                    for (final marker in timeline.yearMarkers)
+                      Positioned(
+                        top: (marker.fraction * availableHeight)
+                            .clamp(0.0, availableHeight)
+                            .toDouble(),
+                        right: 28,
+                        child: AnimatedOpacity(
+                          opacity: widget.isDragging ? 1 : 0,
+                          duration: const Duration(milliseconds: 120),
+                          child: _TimelinePill(
+                            key: ValueKey(
+                              'homeTimelineYearMarker-${marker.year}',
+                            ),
+                            label: marker.year.toString(),
+                            isActive: currentMonth.date.year == marker.year,
+                            compact: true,
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      top: handleTop,
+                      right: _rightInset,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedOpacity(
+                            opacity: widget.isDragging ? 1 : 0,
+                            duration: const Duration(milliseconds: 120),
+                            child: _TimelinePill(
+                              key: const ValueKey('homeTimelineMonthLabel'),
+                              label: DateFormat(
+                                'MMM yyyy',
+                              ).format(currentMonth.date),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _TimelineHandle(
+                            key: const ValueKey('homeTimelineHandle'),
+                            isDragging: widget.isDragging,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _jumpToLocalPosition(double localY, double height) {
+    if (!widget.controller.hasClients ||
+        widget.controller.position.maxScrollExtent <= 0) {
+      return;
+    }
+
+    final availableHeight = height - _handleHeight;
+    final handleTop = (localY - (_handleHeight / 2))
+        .clamp(0.0, availableHeight)
+        .toDouble();
+    final fraction = availableHeight == 0 ? 0.0 : handleTop / availableHeight;
+    widget.controller.jumpTo(
+      widget.controller.position.maxScrollExtent * fraction,
+    );
+  }
+}
+
+class _TimelineIndex {
+  final List<_TimelineMonthMarker> monthMarkers;
+  final List<_TimelineYearMarker> yearMarkers;
+
+  const _TimelineIndex({required this.monthMarkers, required this.yearMarkers});
+
+  factory _TimelineIndex.fromSections({
+    required List<_HomeYearSection> yearSections,
+    required int crossAxisCount,
+    required double viewportWidth,
+  }) {
+    const yearHeaderHeight = 44.0;
+    const monthHeaderHeight = 34.0;
+    const gridSpacing = 8.0;
+    const horizontalPadding = 16.0;
+    const bottomPadding = 84.0;
+
+    final usableWidth = viewportWidth - horizontalPadding;
+    final tileWidth =
+        (usableWidth - (gridSpacing * (crossAxisCount - 1))) / crossAxisCount;
+    final tileHeight = tileWidth / 0.84;
+    final weightedMonths = <_WeightedTimelineMonth>[];
+    var totalHeight = 0.0;
+
+    for (final yearSection in yearSections) {
+      totalHeight += yearHeaderHeight;
+      for (final monthSection in yearSection.months) {
+        final start = totalHeight;
+        final rowCount = (monthSection.items.length / crossAxisCount).ceil();
+        final gridHeight = rowCount == 0
+            ? 0.0
+            : (rowCount * tileHeight) + ((rowCount - 1) * gridSpacing);
+        final sectionHeight = monthHeaderHeight + gridHeight;
+        weightedMonths.add(
+          _WeightedTimelineMonth(
+            month: monthSection.month,
+            start: start,
+            center: start + (sectionHeight / 2),
+          ),
+        );
+        totalHeight += sectionHeight;
+      }
+    }
+
+    totalHeight += bottomPadding;
+    final safeTotalHeight = totalHeight <= 0 ? 1.0 : totalHeight;
+    final monthMarkers = [
+      for (final weightedMonth in weightedMonths)
+        _TimelineMonthMarker(
+          date: weightedMonth.month,
+          fraction: (weightedMonth.center / safeTotalHeight).clamp(0.0, 1.0),
+        ),
+    ];
+
+    final yearMarkers = <_TimelineYearMarker>[];
+    int? previousYear;
+    for (final weightedMonth in weightedMonths) {
+      if (previousYear == weightedMonth.month.year) {
+        continue;
+      }
+      previousYear = weightedMonth.month.year;
+      yearMarkers.add(
+        _TimelineYearMarker(
+          year: weightedMonth.month.year,
+          fraction: (weightedMonth.start / safeTotalHeight).clamp(0.0, 1.0),
+        ),
+      );
+    }
+
+    return _TimelineIndex(monthMarkers: monthMarkers, yearMarkers: yearMarkers);
+  }
+
+  _TimelineMonthMarker monthForFraction(double fraction) {
+    if (monthMarkers.isEmpty) {
+      final now = DateTime.now();
+      return _TimelineMonthMarker(
+        date: DateTime(now.year, now.month),
+        fraction: 0,
+      );
+    }
+
+    var selectedMonth = monthMarkers.first;
+    for (final monthMarker in monthMarkers) {
+      if (monthMarker.fraction > fraction) {
+        break;
+      }
+      selectedMonth = monthMarker;
+    }
+    return selectedMonth;
+  }
+}
+
+class _WeightedTimelineMonth {
+  final DateTime month;
+  final double start;
+  final double center;
+
+  const _WeightedTimelineMonth({
+    required this.month,
+    required this.start,
+    required this.center,
+  });
+}
+
+class _TimelineMonthMarker {
+  final DateTime date;
+  final double fraction;
+
+  const _TimelineMonthMarker({required this.date, required this.fraction});
+}
+
+class _TimelineYearMarker {
+  final int year;
+  final double fraction;
+
+  const _TimelineYearMarker({required this.year, required this.fraction});
+}
+
+class _TimelineHandle extends StatelessWidget {
+  final bool isDragging;
+
+  const _TimelineHandle({super.key, required this.isDragging});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 12,
+      height: 44,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary.withValues(
+          alpha: isDragging ? 0.95 : 0.72,
+        ),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          if (isDragging)
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimelinePill extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final bool compact;
+
+  const _TimelinePill({
+    super.key,
+    required this.label,
+    this.isActive = false,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final backgroundColor = isActive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.surface;
+    final foregroundColor = isActive
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onSurface;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: compact ? 0.12 : 0.22),
+            blurRadius: compact ? 4 : 10,
+            offset: Offset(0, compact ? 1 : 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 12,
+          vertical: compact ? 4 : 8,
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: foregroundColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _GapIndicatorTile extends StatelessWidget {
   final int gapDays;
 
@@ -298,7 +718,9 @@ class _GapIndicatorTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isSingleDayGap = gapDays == 1;
-    const indicatorColor = Colors.white;
+    final indicatorColor = theme.brightness == Brightness.light
+        ? Colors.black
+        : Colors.white;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -322,7 +744,7 @@ class _GapIndicatorTile extends StatelessWidget {
                   width: 6,
                   height: 6,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     color: indicatorColor,
                     shape: BoxShape.circle,
                   ),
