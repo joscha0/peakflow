@@ -685,6 +685,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final effectiveColorReferenceMaxVolume = ref
+        .watch(colorReferenceMaxValueProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => colorReferenceMaxVolume,
+        );
 
     final body = isLoading
         ? const Center(
@@ -768,7 +774,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                                                   daySpan: _chartDaySpan,
                                                   maxVolume: maxVolume,
                                                   colorReferenceMaxVolume:
-                                                      colorReferenceMaxVolume,
+                                                      effectiveColorReferenceMaxVolume,
                                                   dayWidth: dayWidth,
                                                   chartRightPadding:
                                                       _chartRightPadding,

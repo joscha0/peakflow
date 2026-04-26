@@ -160,6 +160,12 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dateText = DateFormat("dd.MM.yyyy").format(widget.dayEntry.date);
+    final effectiveColorReferenceMaxValue = ref
+        .watch(colorReferenceMaxValueProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => colorReferenceMaxValue,
+        );
 
     return Scaffold(
       appBar: AppBar(title: const Text("Edit reading"), centerTitle: true),
@@ -196,7 +202,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               PeakFlowValueSelector(
                 value: sliderValue,
                 maxVolume: maxVolume,
-                referenceMaxVolume: colorReferenceMaxValue,
+                referenceMaxVolume: effectiveColorReferenceMaxValue,
                 valueAboveMeter: true,
                 onChanged: (value) {
                   setState(() {
@@ -212,7 +218,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Maximum reading: $colorReferenceMaxValue L/min',
+                  'Maximum reading: $effectiveColorReferenceMaxValue L/min',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
                   ),
@@ -251,7 +257,8 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
             ),
             widget.readingIndex,
           );
-          ref.read(entryListProvider.notifier).loadEntries();
+          await ref.read(entryListProvider.notifier).loadEntries();
+          ref.invalidate(colorReferenceMaxValueProvider);
           if (!context.mounted) {
             return;
           }

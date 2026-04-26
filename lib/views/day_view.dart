@@ -51,24 +51,7 @@ class DayView extends ConsumerStatefulWidget {
 }
 
 class _DayViewState extends ConsumerState<DayView> {
-  int referenceMaxValue = defaultMaxVolume;
   bool _isDeletingDay = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadReferenceMaxValue();
-  }
-
-  Future<void> _loadReferenceMaxValue() async {
-    final loadedReferenceMaxValue = await getColorReferenceMaxValue();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      referenceMaxValue = loadedReferenceMaxValue;
-    });
-  }
 
   DayEntry _currentDayEntry(List<DayEntry> entries) {
     for (final entry in entries) {
@@ -137,7 +120,7 @@ class _DayViewState extends ConsumerState<DayView> {
         return;
       }
       await deleteReading(dayEntry.date, readingIndex);
-      await _loadReferenceMaxValue();
+      ref.invalidate(colorReferenceMaxValueProvider);
       await ref.read(entryListProvider.notifier).loadEntries();
       if (!mounted) {
         return;
@@ -164,6 +147,9 @@ class _DayViewState extends ConsumerState<DayView> {
     }
 
     final dayEntry = _currentDayEntry(ref.watch(entryListProvider));
+    final referenceMaxValue = ref
+        .watch(colorReferenceMaxValueProvider)
+        .maybeWhen(data: (value) => value, orElse: () => defaultMaxVolume);
     final symptoms = dayEntry.checkboxValues.entries
         .where((entry) => entry.value)
         .map((entry) => entry.key)

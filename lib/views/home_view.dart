@@ -21,7 +21,6 @@ enum _HomePage { timeline, graph }
 
 class _HomeViewState extends ConsumerState<HomeView> {
   final ScrollController _scrollController = ScrollController();
-  int referenceMaxValue = defaultMaxVolume;
   bool isListLoading = true;
   bool isTimelineDragging = false;
   int dataPageRevision = 0;
@@ -43,15 +42,14 @@ class _HomeViewState extends ConsumerState<HomeView> {
     final entriesFuture = ref.read(entryListProvider.notifier).loadEntries();
 
     try {
-      final nextReferenceMaxValue = await getColorReferenceMaxValue();
+      await entriesFuture;
       if (!mounted) {
         return;
       }
+      ref.invalidate(colorReferenceMaxValueProvider);
       setState(() {
-        referenceMaxValue = nextReferenceMaxValue;
         dataPageRevision++;
       });
-      await entriesFuture;
     } finally {
       if (mounted) {
         setState(() {
@@ -93,6 +91,9 @@ class _HomeViewState extends ConsumerState<HomeView> {
   @override
   Widget build(BuildContext context) {
     final timelineEntries = ref.watch(timelineEntryListProvider);
+    final referenceMaxValue = ref
+        .watch(colorReferenceMaxValueProvider)
+        .maybeWhen(data: (value) => value, orElse: () => defaultMaxVolume);
     final yearSections = _buildSections(timelineEntries);
     return LayoutBuilder(
       builder: (context, constraints) {
