@@ -274,6 +274,7 @@ class _AddViewState extends ConsumerState<AddView> {
                   value: sliderValue,
                   maxVolume: maxVolume,
                   referenceMaxVolume: colorReferenceMaxValue,
+                  valueAboveMeter: true,
                   onChanged: (value) {
                     setState(() {
                       sliderValue = value;

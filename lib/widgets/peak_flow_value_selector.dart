@@ -11,6 +11,7 @@ class PeakFlowValueSelector extends StatefulWidget {
     required this.onChanged,
     this.referenceMaxVolume,
     this.onDraggingChanged,
+    this.valueAboveMeter = false,
   });
 
   final double value;
@@ -18,6 +19,7 @@ class PeakFlowValueSelector extends StatefulWidget {
   final int? referenceMaxVolume;
   final ValueChanged<double> onChanged;
   final ValueChanged<bool>? onDraggingChanged;
+  final bool valueAboveMeter;
 
   @override
   State<PeakFlowValueSelector> createState() => _PeakFlowValueSelectorState();
@@ -26,6 +28,7 @@ class PeakFlowValueSelector extends StatefulWidget {
 class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
   final valueController = TextEditingController();
   bool isDragging = false;
+  late double _currentValue;
 
   int get _effectiveReferenceMaxVolume {
     final reference = widget.referenceMaxVolume ?? widget.maxVolume;
@@ -35,14 +38,18 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
   @override
   void initState() {
     super.initState();
-    _syncValueText(widget.value.round());
+    _currentValue = _clampValue(widget.value);
+    _syncValueText(_currentValue.round());
   }
 
   @override
   void didUpdateWidget(covariant PeakFlowValueSelector oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value.round() != widget.value.round()) {
-      _syncValueText(widget.value.round());
+    if (!isDragging &&
+        (oldWidget.value.round() != widget.value.round() ||
+            oldWidget.maxVolume != widget.maxVolume)) {
+      _currentValue = _clampValue(widget.value);
+      _syncValueText(_currentValue.round());
     }
   }
 
@@ -64,19 +71,37 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     );
   }
 
-  double _normalizeValue(double value) {
-    final snappedValue =
-        ((value.clamp(0, widget.maxVolume.toDouble())) / 10).round() * 10;
-    return snappedValue
-        .toDouble()
-        .clamp(0, widget.maxVolume.toDouble())
-        .toDouble();
+  double _clampValue(double value) {
+    return value.clamp(0, widget.maxVolume.toDouble()).toDouble();
   }
 
-  void _updateValue(double value) {
+  double _normalizeValue(double value) {
+    final snappedValue = (_clampValue(value) / 10).round() * 10;
+    return _clampValue(snappedValue.toDouble());
+  }
+
+  void _setCurrentValue(double value) {
+    if (_currentValue == value) {
+      return;
+    }
+
+    setState(() {
+      _currentValue = value;
+    });
+  }
+
+  void _updateValue(double value, {bool notifyParent = true}) {
     final normalizedValue = _normalizeValue(value);
-    widget.onChanged(normalizedValue);
+    _setCurrentValue(normalizedValue);
     _syncValueText(normalizedValue.round());
+
+    if (notifyParent) {
+      widget.onChanged(normalizedValue);
+    }
+  }
+
+  void _commitValue() {
+    widget.onChanged(_currentValue);
   }
 
   bool _isPositionOnSelectorLine(Offset localPosition, Size size) {
@@ -92,7 +117,7 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     );
     final progress =
         (clampedDx - geometry.trackRect.left) / geometry.trackRect.width;
-    _updateValue(progress * widget.maxVolume);
+    _updateValue(progress * widget.maxVolume, notifyParent: false);
   }
 
   void _handleValueTextChanged(String value) {
@@ -106,6 +131,7 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     }
 
     final clampedValue = parsedValue.clamp(0, widget.maxVolume);
+    _setCurrentValue(clampedValue.toDouble());
     widget.onChanged(clampedValue.toDouble());
 
     if (clampedValue != parsedValue) {
@@ -130,10 +156,9 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final progress = widget.maxVolume == 0
         ? 0.0
-        : (widget.value / widget.maxVolume).clamp(0.0, 1.0);
+        : (_currentValue / widget.maxVolume).clamp(0.0, 1.0);
     final referenceMaxVolume = _effectiveReferenceMaxVolume;
 
     return LayoutBuilder(
@@ -144,99 +169,28 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
         final meterHeight = meterWidth * 0.35;
         final meterSize = Size(meterWidth, meterHeight);
 
+        final meter = _buildMeter(
+          context,
+          meterWidth,
+          meterHeight,
+          meterSize,
+          referenceMaxVolume,
+          progress,
+        );
+        final valueInput = _buildValueInput(context);
+
         return Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Listener(
-                behavior: HitTestBehavior.opaque,
-                onPointerDown: (event) {
-                  if (!_isPositionOnSelectorLine(
-                    event.localPosition,
-                    meterSize,
-                  )) {
-                    return;
-                  }
-
-                  _setDragging(true);
-                  _updateValueFromPosition(event.localPosition, meterSize);
-                },
-                onPointerMove: (event) {
-                  if (!isDragging) {
-                    return;
-                  }
-
-                  _updateValueFromPosition(event.localPosition, meterSize);
-                },
-                onPointerUp: (_) {
-                  _setDragging(false);
-                },
-                onPointerCancel: (_) {
-                  _setDragging(false);
-                },
-                child: SizedBox(
-                  width: meterWidth,
-                  height: meterHeight,
-                  child: CustomPaint(
-                    size: meterSize,
-                    painter: _PeakFlowMeterPainter(
-                      maxVolume: widget.maxVolume,
-                      referenceMaxVolume: referenceMaxVolume,
-                      progress: progress,
-                      activeColor: theme.colorScheme.primary,
-                      shellColor: theme.colorScheme.onSurface.withValues(
-                        alpha: theme.brightness == Brightness.dark ? 0.14 : 0.1,
-                      ),
-                      faceColor: theme.colorScheme.onSurface.withValues(
-                        alpha: theme.brightness == Brightness.dark
-                            ? 0.09
-                            : 0.06,
-                      ),
-                      meterMarkColor: theme.colorScheme.primary.withValues(
-                        alpha: 0.36,
-                      ),
-                      textColor: theme.colorScheme.onSurface.withValues(
-                        alpha: 0.62,
-                      ),
-                      channelColor: theme.dividerColor.withValues(alpha: 0.4),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 0),
-              SizedBox(
-                width: 170,
-                child: TextFormField(
-                  controller: valueController,
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
-                  ],
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  onChanged: _handleValueTextChanged,
-                  onTapOutside: (_) {
-                    FocusScope.of(context).unfocus();
-                    _normalizeTypedValue();
-                  },
-                  onFieldSubmitted: (_) {
-                    _normalizeTypedValue();
-                  },
-                ),
-              ),
-              Text(
-                'L/min',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
-              ),
+              if (widget.valueAboveMeter) ...[
+                valueInput,
+                const SizedBox(height: 8),
+                meter,
+              ] else ...[
+                meter,
+                valueInput,
+              ],
               const SizedBox(height: 6),
               Wrap(
                 alignment: WrapAlignment.center,
@@ -249,16 +203,113 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
                 ],
               ),
               const SizedBox(height: 6),
-              Text(
-                'Drag the line or type a value',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.62),
-                ),
-              ),
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMeter(
+    BuildContext context,
+    double meterWidth,
+    double meterHeight,
+    Size meterSize,
+    int referenceMaxVolume,
+    double progress,
+  ) {
+    final theme = Theme.of(context);
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        if (!_isPositionOnSelectorLine(event.localPosition, meterSize)) {
+          return;
+        }
+
+        _setDragging(true);
+        _updateValueFromPosition(event.localPosition, meterSize);
+      },
+      onPointerMove: (event) {
+        if (!isDragging) {
+          return;
+        }
+
+        _updateValueFromPosition(event.localPosition, meterSize);
+      },
+      onPointerUp: (_) {
+        _commitValue();
+        _setDragging(false);
+      },
+      onPointerCancel: (_) {
+        _commitValue();
+        _setDragging(false);
+      },
+      child: SizedBox(
+        width: meterWidth,
+        height: meterHeight,
+        child: CustomPaint(
+          size: meterSize,
+          painter: _PeakFlowMeterPainter(
+            maxVolume: widget.maxVolume,
+            referenceMaxVolume: referenceMaxVolume,
+            progress: progress,
+            activeColor: theme.colorScheme.primary,
+            shellColor: theme.colorScheme.onSurface.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.14 : 0.1,
+            ),
+            faceColor: theme.colorScheme.onSurface.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.09 : 0.06,
+            ),
+            meterMarkColor: theme.colorScheme.primary.withValues(alpha: 0.36),
+            textColor: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+            channelColor: theme.dividerColor.withValues(alpha: 0.4),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildValueInput(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 170,
+          child: TextFormField(
+            controller: valueController,
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
+            ],
+            style: theme.textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: _handleValueTextChanged,
+            onTapOutside: (_) {
+              FocusScope.of(context).unfocus();
+              _normalizeTypedValue();
+            },
+            onFieldSubmitted: (_) {
+              _normalizeTypedValue();
+            },
+          ),
+        ),
+        Text(
+          'L/min',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+        ),
+      ],
     );
   }
 }
