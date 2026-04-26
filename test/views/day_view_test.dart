@@ -44,6 +44,47 @@ void main() {
     expect(find.text('280'), findsOneWidget);
   });
 
+  testWidgets('day and reading notes wrap on narrow screens', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    const longDayNote =
+        'Medication helped and readings recovered later in the day after '
+        'resting, hydrating, and checking again before dinner.';
+    const longReadingNote =
+        'Slightly tight chest before medication, improved after the second '
+        'measurement and a quiet walk.';
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: DayView(
+            dayEntry: buildDayEntry(
+              date: DateTime(2026, 4, 21),
+              note: longDayNote,
+              readings: [
+                buildReading(
+                  hour: 7,
+                  minute: 30,
+                  value: 280,
+                  note: longReadingNote,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text(longDayNote), findsOneWidget);
+    expect(find.text(longReadingNote), findsOneWidget);
+  });
+
   testWidgets('deletion confirmation dialog shows day copy and cancels', (
     WidgetTester tester,
   ) async {

@@ -111,9 +111,7 @@ class _DayViewState extends ConsumerState<DayView> {
       unawaited(_deleteDayAndRefresh(entriesNotifier, dayEntry.date));
     } else if (value == "edit") {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => EditDayView(dayEntry: dayEntry),
-        ),
+        MaterialPageRoute(builder: (_) => EditDayView(dayEntry: dayEntry)),
       );
     }
   }
@@ -138,10 +136,7 @@ class _DayViewState extends ConsumerState<DayView> {
       if (!confirmed || !mounted) {
         return;
       }
-      await deleteReading(
-        dayEntry.date,
-        readingIndex,
-      );
+      await deleteReading(dayEntry.date, readingIndex);
       await _loadReferenceMaxValue();
       await ref.read(entryListProvider.notifier).loadEntries();
       if (!mounted) {
@@ -185,10 +180,7 @@ class _DayViewState extends ConsumerState<DayView> {
                   onTap: () => unawaited(_handleDaySelection("edit", dayEntry)),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("edit"),
-                      Icon(Icons.edit),
-                    ],
+                    children: [Text("edit"), Icon(Icons.edit)],
                   ),
                 ),
                 PopupMenuItem<void>(
@@ -196,10 +188,7 @@ class _DayViewState extends ConsumerState<DayView> {
                       unawaited(_handleDaySelection("delete", dayEntry)),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text("delete"),
-                      Icon(Icons.delete),
-                    ],
+                    children: [Text("delete"), Icon(Icons.delete)],
                   ),
                 ),
               ];
@@ -217,18 +206,20 @@ class _DayViewState extends ConsumerState<DayView> {
                   padding: const EdgeInsets.all(8.0),
                   child: Row(
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            "Notes",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Notes",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
                             ),
-                          ),
-                          Text(dayEntry.note),
-                        ],
+                            Text(dayEntry.note),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -381,7 +372,7 @@ class _DayViewState extends ConsumerState<DayView> {
                                   "Notes: ",
                                   style: TextStyle(fontWeight: FontWeight.bold),
                                 ),
-                                Text(reading.note),
+                                Expanded(child: Text(reading.note)),
                               ],
                             ),
                           ),
