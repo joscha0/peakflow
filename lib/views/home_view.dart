@@ -83,6 +83,13 @@ class _HomeViewState extends ConsumerState<HomeView> {
     });
   }
 
+  Future<void> _openSettings() async {
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SettingsView()));
+    await _refreshHomeData();
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = ref.watch(entryListProvider);
@@ -91,77 +98,76 @@ class _HomeViewState extends ConsumerState<HomeView> {
       builder: (context, constraints) {
         final crossAxisCount = _getCrossAxisCount(constraints.maxWidth);
         return Scaffold(
-          appBar: AppBar(
-            centerTitle: true,
-            title: Text(
-              selectedPage == _HomePage.timeline ? "PEAK FLOW" : "Data",
-            ),
-            actions: [
-              IconButton(
-                onPressed: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const SettingsView()),
-                  );
-                  await _refreshHomeData();
-                },
-                icon: const Icon(Icons.settings),
-              ),
-            ],
-          ),
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(opacity: animation, child: child);
-                  },
-                  child: selectedPage == _HomePage.timeline
-                      ? _TimelinePage(
-                          key: const ValueKey('timelinePage'),
-                          scrollController: _scrollController,
-                          entries: entries,
-                          yearSections: yearSections,
-                          crossAxisCount: crossAxisCount,
-                          viewportWidth: constraints.maxWidth,
-                          referenceMaxValue: referenceMaxValue,
-                          isListLoading: isListLoading,
-                          isTimelineDragging: isTimelineDragging,
-                          onDragStateChanged: (isDragging) {
-                            if (isTimelineDragging == isDragging) {
-                              return;
-                            }
-                            setState(() {
-                              isTimelineDragging = isDragging;
-                            });
-                          },
-                        )
-                      : Padding(
-                          key: const ValueKey('graphPage'),
-                          padding: const EdgeInsets.only(bottom: 88),
-                          child: GraphView(
-                            key: ValueKey(dataPageRevision),
-                            showScaffold: false,
-                          ),
-                        ),
-                ),
-              ),
-              Positioned(
-                left: 16,
-                bottom: 16,
-                child: SafeArea(
-                  top: false,
-                  child: _FloatingPageNav(
-                    selectedPageIndex: _selectedPageIndex,
-                    onSelected: (page) {
-                      _selectPage(page);
+          body: SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
                     },
+                    child: selectedPage == _HomePage.timeline
+                        ? _TimelinePage(
+                            key: const ValueKey('timelinePage'),
+                            scrollController: _scrollController,
+                            entries: entries,
+                            yearSections: yearSections,
+                            crossAxisCount: crossAxisCount,
+                            viewportWidth: constraints.maxWidth,
+                            referenceMaxValue: referenceMaxValue,
+                            isListLoading: isListLoading,
+                            isTimelineDragging: isTimelineDragging,
+                            onDragStateChanged: (isDragging) {
+                              if (isTimelineDragging == isDragging) {
+                                return;
+                              }
+                              setState(() {
+                                isTimelineDragging = isDragging;
+                              });
+                            },
+                          )
+                        : Padding(
+                            key: const ValueKey('graphPage'),
+                            padding: const EdgeInsets.only(bottom: 88),
+                            child: GraphView(
+                              key: ValueKey(dataPageRevision),
+                              showScaffold: false,
+                            ),
+                          ),
                   ),
                 ),
-              ),
-            ],
+                Positioned(
+                  top: 0,
+                  right: 4,
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: const CircleBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      onPressed: _openSettings,
+                      icon: const Icon(Icons.settings),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  bottom: 16,
+                  child: SafeArea(
+                    top: false,
+                    child: _FloatingPageNav(
+                      selectedPageIndex: _selectedPageIndex,
+                      onSelected: (page) {
+                        _selectPage(page);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           floatingActionButton: FloatingActionButton(
             onPressed: () async {
@@ -549,6 +555,7 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
   static const double _handleWidth = 12;
   static const double _railWidth = 56;
   static const double _rightInset = 6;
+  static const double _topInset = 52;
 
   late _TimelineIndex _timeline;
   final ValueNotifier<int?> _activeYear = ValueNotifier<int?>(null);
@@ -633,7 +640,10 @@ class _TimelineScrollOverlayState extends State<_TimelineScrollOverlay> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Positioned.fill(
+    return Positioned(
+      top: _topInset,
+      right: 0,
+      bottom: 0,
       child: Align(
         alignment: Alignment.centerRight,
         child: LayoutBuilder(
