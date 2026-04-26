@@ -15,7 +15,7 @@ class DayEntriesState extends StateNotifier<List<DayEntry>> {
       return;
     }
 
-    final loadFuture = _loadAndSortEntries();
+    final loadFuture = _loadEntries();
     _loadEntriesFuture = loadFuture;
 
     try {
@@ -44,25 +44,11 @@ class DayEntriesState extends StateNotifier<List<DayEntry>> {
       return state;
     }
 
-    return _loadAndSortEntries();
+    return _loadEntries();
   }
 
-  Future<List<DayEntry>> _loadAndSortEntries() async {
-    final results = await Future.wait<Object>([
-      getDayEntries(),
-      getSortValue(),
-    ]);
-    final entries = results[0] as List<DayEntry>;
-    final sortUp = results[1] as bool;
-    if (sortUp) {
-      return entries;
-    }
-    return entries.reversed.toList(growable: false);
-  }
-
-  void changeSort() {
-    state = state.reversed.toList(growable: false);
-    _hasLoadedEntries = true;
+  Future<List<DayEntry>> _loadEntries() async {
+    return getDayEntries();
   }
 
   void removeDay(DateTime date) {

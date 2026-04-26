@@ -10,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 const int defaultMaxVolume = 850;
 const String maxVolumeKey = "maxVolume";
 const String bestValueKey = "bestValue";
-const String sortValueKey = "sortValue";
 const String useAutomaticMaxValueKey = "useAutomaticMaxValue";
 const String manualColorReferenceMaxValueKey = "manualColorReferenceMaxValue";
 const String readingsMigratedToDriftKey = "readingsMigratedToDrift";
@@ -20,11 +19,6 @@ Future<AppDatabase>? _databaseFuture;
 Future<int> getBestValue() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getInt(bestValueKey) ?? 0;
-}
-
-Future<bool> getSortValue() async {
-  final prefs = await SharedPreferences.getInstance();
-  return prefs.getBool(sortValueKey) ?? true;
 }
 
 Future<int> getDeviceMaxValue() async {
@@ -78,11 +72,6 @@ Future<int> getColorReferenceMaxValue() async {
 Future<void> setBestValue(int value) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setInt(bestValueKey, value);
-}
-
-Future<void> setSortValue(bool value) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool(sortValueKey, value);
 }
 
 Future<void> updateBestValue() async {

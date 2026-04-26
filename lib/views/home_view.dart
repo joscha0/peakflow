@@ -17,12 +17,15 @@ class HomeView extends ConsumerStatefulWidget {
   ConsumerState<HomeView> createState() => _HomeViewState();
 }
 
+enum _HomePage { timeline, graph }
+
 class _HomeViewState extends ConsumerState<HomeView> {
   final ScrollController _scrollController = ScrollController();
   int referenceMaxValue = defaultMaxVolume;
-  bool sortUp = true;
   bool isListLoading = true;
   bool isTimelineDragging = false;
+  int dataPageRevision = 0;
+  _HomePage selectedPage = _HomePage.timeline;
 
   @override
   void initState() {
@@ -40,16 +43,13 @@ class _HomeViewState extends ConsumerState<HomeView> {
     final entriesFuture = ref.read(entryListProvider.notifier).loadEntries();
 
     try {
-      final values = await Future.wait<Object>([
-        getColorReferenceMaxValue(),
-        getSortValue(),
-      ]);
+      final nextReferenceMaxValue = await getColorReferenceMaxValue();
       if (!mounted) {
         return;
       }
       setState(() {
-        referenceMaxValue = values[0] as int;
-        sortUp = values[1] as bool;
+        referenceMaxValue = nextReferenceMaxValue;
+        dataPageRevision++;
       });
       await entriesFuture;
     } finally {
@@ -63,18 +63,24 @@ class _HomeViewState extends ConsumerState<HomeView> {
     }
   }
 
-  void changeSort() {
-    ref.read(entryListProvider.notifier).changeSort();
-    setState(() {
-      sortUp = !sortUp;
-    });
-    setSortValue(sortUp);
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  int get _selectedPageIndex {
+    return selectedPage == _HomePage.timeline ? 0 : 1;
+  }
+
+  void _selectPage(_HomePage page) {
+    if (selectedPage == page) {
+      return;
+    }
+
+    setState(() {
+      selectedPage = page;
+    });
   }
 
   @override
@@ -87,21 +93,10 @@ class _HomeViewState extends ConsumerState<HomeView> {
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
-            title: const Text("PEAK FLOW"),
+            title: Text(
+              selectedPage == _HomePage.timeline ? "PEAK FLOW" : "Data",
+            ),
             actions: [
-              IconButton(
-                onPressed: changeSort,
-                icon: Icon(sortUp ? Icons.arrow_upward : Icons.arrow_downward),
-              ),
-              IconButton(
-                onPressed: () async {
-                  await Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute(builder: (_) => const GraphView()));
-                  await _refreshHomeData();
-                },
-                icon: const Icon(Icons.bar_chart),
-              ),
               IconButton(
                 onPressed: () async {
                   await Navigator.of(context).push(
@@ -115,117 +110,57 @@ class _HomeViewState extends ConsumerState<HomeView> {
           ),
           body: Stack(
             children: [
-              CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  if (isListLoading && entries.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(),
-                        ),
-                      ),
-                    )
-                  else if (entries.isEmpty)
-                    const SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(child: Text('No data available yet.')),
-                    )
-                  else ...[
-                    for (
-                      int yearIndex = 0;
-                      yearIndex < yearSections.length;
-                      yearIndex++
-                    )
-                      SliverMainAxisGroup(
-                        slivers: [
-                          SliverPersistentHeader(
-                            pinned: true,
-                            delegate: _SectionHeaderDelegate(
-                              height: 44,
-                              child: _SectionTitle(
-                                title: yearSections[yearIndex].year.toString(),
-                                fontSize: 28,
-                                topPadding: yearIndex == 0 ? 8 : 14,
-                                bottomPadding: 2,
-                              ),
-                            ),
-                          ),
-                          for (final monthSection
-                              in yearSections[yearIndex].months)
-                            SliverMainAxisGroup(
-                              slivers: [
-                                SliverPersistentHeader(
-                                  pinned: true,
-                                  delegate: _SectionHeaderDelegate(
-                                    height: 34,
-                                    child: _SectionTitle(
-                                      title: DateFormat(
-                                        "MMMM",
-                                      ).format(monthSection.month),
-                                      fontSize: 18,
-                                      topPadding: 8,
-                                      bottomPadding: 6,
-                                    ),
-                                  ),
-                                ),
-                                SliverPadding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                  ),
-                                  sliver: SliverGrid(
-                                    delegate: SliverChildBuilderDelegate((
-                                      context,
-                                      itemIndex,
-                                    ) {
-                                      final item =
-                                          monthSection.items[itemIndex];
-                                      if (item.dayEntry != null) {
-                                        return DateWidget(
-                                          dayEntry: item.dayEntry!,
-                                          referenceMaxValue: referenceMaxValue,
-                                        );
-                                      }
-                                      return _GapIndicatorTile(
-                                        gapDays: item.gapDays!,
-                                      );
-                                    }, childCount: monthSection.items.length),
-                                    gridDelegate:
-                                        SliverGridDelegateWithFixedCrossAxisCount(
-                                          crossAxisCount: crossAxisCount,
-                                          mainAxisSpacing: 8,
-                                          crossAxisSpacing: 8,
-                                          childAspectRatio: 0.84,
-                                        ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 84)),
-                  ],
-                ],
-              ),
-              if (entries.isNotEmpty)
-                _TimelineScrollOverlay(
-                  controller: _scrollController,
-                  yearSections: yearSections,
-                  crossAxisCount: crossAxisCount,
-                  viewportWidth: constraints.maxWidth,
-                  isDragging: isTimelineDragging,
-                  onDragStateChanged: (isDragging) {
-                    if (isTimelineDragging == isDragging) {
-                      return;
-                    }
-                    setState(() {
-                      isTimelineDragging = isDragging;
-                    });
+              Positioned.fill(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(opacity: animation, child: child);
                   },
+                  child: selectedPage == _HomePage.timeline
+                      ? _TimelinePage(
+                          key: const ValueKey('timelinePage'),
+                          scrollController: _scrollController,
+                          entries: entries,
+                          yearSections: yearSections,
+                          crossAxisCount: crossAxisCount,
+                          viewportWidth: constraints.maxWidth,
+                          referenceMaxValue: referenceMaxValue,
+                          isListLoading: isListLoading,
+                          isTimelineDragging: isTimelineDragging,
+                          onDragStateChanged: (isDragging) {
+                            if (isTimelineDragging == isDragging) {
+                              return;
+                            }
+                            setState(() {
+                              isTimelineDragging = isDragging;
+                            });
+                          },
+                        )
+                      : Padding(
+                          key: const ValueKey('graphPage'),
+                          padding: const EdgeInsets.only(bottom: 88),
+                          child: GraphView(
+                            key: ValueKey(dataPageRevision),
+                            showScaffold: false,
+                          ),
+                        ),
                 ),
+              ),
+              Positioned(
+                left: 16,
+                bottom: 16,
+                child: SafeArea(
+                  top: false,
+                  child: _FloatingPageNav(
+                    selectedPageIndex: _selectedPageIndex,
+                    onSelected: (page) {
+                      _selectPage(page);
+                    },
+                  ),
+                ),
+              ),
             ],
           ),
           floatingActionButton: FloatingActionButton(
@@ -283,6 +218,279 @@ class _HomeViewState extends ConsumerState<HomeView> {
     const desiredCardWidth = 96.0;
     final usableWidth = width - horizontalPadding;
     return (usableWidth / desiredCardWidth).floor().clamp(2, 8);
+  }
+}
+
+class _TimelinePage extends StatelessWidget {
+  final ScrollController scrollController;
+  final List<DayEntry> entries;
+  final List<_HomeYearSection> yearSections;
+  final int crossAxisCount;
+  final double viewportWidth;
+  final int referenceMaxValue;
+  final bool isListLoading;
+  final bool isTimelineDragging;
+  final ValueChanged<bool> onDragStateChanged;
+
+  const _TimelinePage({
+    super.key,
+    required this.scrollController,
+    required this.entries,
+    required this.yearSections,
+    required this.crossAxisCount,
+    required this.viewportWidth,
+    required this.referenceMaxValue,
+    required this.isListLoading,
+    required this.isTimelineDragging,
+    required this.onDragStateChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        CustomScrollView(
+          key: const ValueKey('homeTimelineScrollView'),
+          controller: scrollController,
+          slivers: [
+            if (isListLoading && entries.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+              )
+            else if (entries.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('No data available yet.')),
+              )
+            else ...[
+              for (
+                int yearIndex = 0;
+                yearIndex < yearSections.length;
+                yearIndex++
+              )
+                SliverMainAxisGroup(
+                  slivers: [
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _SectionHeaderDelegate(
+                        height: 44,
+                        child: _SectionTitle(
+                          title: yearSections[yearIndex].year.toString(),
+                          fontSize: 28,
+                          topPadding: yearIndex == 0 ? 8 : 14,
+                          bottomPadding: 2,
+                        ),
+                      ),
+                    ),
+                    for (final monthSection in yearSections[yearIndex].months)
+                      SliverMainAxisGroup(
+                        slivers: [
+                          SliverPersistentHeader(
+                            pinned: true,
+                            delegate: _SectionHeaderDelegate(
+                              height: 34,
+                              child: _SectionTitle(
+                                title: DateFormat(
+                                  "MMMM",
+                                ).format(monthSection.month),
+                                fontSize: 18,
+                                topPadding: 8,
+                                bottomPadding: 6,
+                              ),
+                            ),
+                          ),
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            sliver: SliverGrid(
+                              delegate: SliverChildBuilderDelegate((
+                                context,
+                                itemIndex,
+                              ) {
+                                final item = monthSection.items[itemIndex];
+                                if (item.dayEntry != null) {
+                                  return DateWidget(
+                                    dayEntry: item.dayEntry!,
+                                    referenceMaxValue: referenceMaxValue,
+                                  );
+                                }
+                                return _GapIndicatorTile(
+                                  gapDays: item.gapDays!,
+                                );
+                              }, childCount: monthSection.items.length),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: crossAxisCount,
+                                    mainAxisSpacing: 8,
+                                    crossAxisSpacing: 8,
+                                    childAspectRatio: 0.84,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              const SliverToBoxAdapter(child: SizedBox(height: 84)),
+            ],
+          ],
+        ),
+        if (entries.isNotEmpty)
+          _TimelineScrollOverlay(
+            controller: scrollController,
+            yearSections: yearSections,
+            crossAxisCount: crossAxisCount,
+            viewportWidth: viewportWidth,
+            isDragging: isTimelineDragging,
+            onDragStateChanged: onDragStateChanged,
+          ),
+      ],
+    );
+  }
+}
+
+class _FloatingPageNav extends StatelessWidget {
+  static const double _itemWidth = 104;
+  static const double _itemHeight = 44;
+
+  final int selectedPageIndex;
+  final ValueChanged<_HomePage> onSelected;
+
+  const _FloatingPageNav({
+    required this.selectedPageIndex,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: theme.colorScheme.surface,
+      elevation: 6,
+      shadowColor: theme.shadowColor.withValues(alpha: 0.18),
+      borderRadius: BorderRadius.circular(999),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: SizedBox(
+          width: _itemWidth * 2,
+          height: _itemHeight,
+          child: Stack(
+            children: [
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                left: selectedPageIndex * _itemWidth,
+                top: 0,
+                bottom: 0,
+                width: _itemWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  _FloatingPageNavItem(
+                    width: _itemWidth,
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Timeline',
+                    isSelected: selectedPageIndex == 0,
+                    onTap: () => onSelected(_HomePage.timeline),
+                  ),
+                  _FloatingPageNavItem(
+                    width: _itemWidth,
+                    icon: Icons.show_chart,
+                    label: 'Graph',
+                    isSelected: selectedPageIndex == 1,
+                    onTap: () => onSelected(_HomePage.graph),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FloatingPageNavItem extends StatelessWidget {
+  final double width;
+  final IconData icon;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FloatingPageNavItem({
+    required this.width,
+    required this.icon,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final foreground = isSelected
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onSurface.withValues(alpha: 0.72);
+
+    return Semantics(
+      button: true,
+      selected: isSelected,
+      label: label,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: SizedBox(
+          width: width,
+          height: _FloatingPageNav._itemHeight,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRect(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  width: isSelected ? 32 : 0,
+                  height: 24,
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Center(
+                      child: Icon(icon, size: 20, color: foreground),
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: foreground,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

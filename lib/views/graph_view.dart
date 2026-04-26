@@ -10,7 +10,9 @@ import 'package:peakflow/providers/day_entries_provider.dart';
 enum _GraphRangePreset { all, last3Months, last12Months, custom }
 
 class GraphView extends ConsumerStatefulWidget {
-  const GraphView({super.key});
+  const GraphView({super.key, this.showScaffold = true});
+
+  final bool showScaffold;
 
   @override
   ConsumerState<GraphView> createState() => _GraphViewState();
@@ -678,152 +680,151 @@ class _GraphViewState extends ConsumerState<GraphView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Data')),
-      body: isLoading
-          ? const Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(),
-              ),
-            )
-          : Column(
-              children: [
-                if (entries.isEmpty)
-                  const Expanded(
-                    child: Center(child: Text('No data available yet.')),
-                  ),
-                if (range != null) _buildRangeControls(theme),
-                if (range != null)
-                  AspectRatio(
-                    aspectRatio: 1,
-                    child: Padding(
-                      padding: const EdgeInsets.only(
-                        left: 16,
-                        top: 8,
-                        right: 16,
-                        bottom: 12,
-                      ),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final plotViewportWidth = math.max(
-                            0.0,
-                            constraints.maxWidth - _yAxisWidth - _yAxisGap,
-                          );
-                          final chartHeight = math.max(
-                            0.0,
-                            constraints.maxHeight -
-                                _bottomTitleReservedSize -
-                                _scrollbarThickness -
-                                _scrollbarTopSpacing,
-                          );
-                          final chartAreaHeight = math.max(
-                            0.0,
-                            constraints.maxHeight -
-                                _scrollbarThickness -
-                                _scrollbarTopSpacing,
-                          );
-                          final dayWidth = _resolveDayWidth(plotViewportWidth);
-                          final chartWidth = math.max(
-                            plotViewportWidth,
-                            _chartRightPadding +
-                                ((_chartDaySpan + 1) * dayWidth),
-                          );
+    final body = isLoading
+        ? const Center(
+            child: SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(),
+            ),
+          )
+        : Column(
+            children: [
+              if (entries.isEmpty)
+                const Expanded(
+                  child: Center(child: Text('No data available yet.')),
+                ),
+              if (range != null) _buildRangeControls(theme),
+              if (range != null)
+                AspectRatio(
+                  aspectRatio: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: 16,
+                      top: 8,
+                      right: 16,
+                      bottom: 12,
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final plotViewportWidth = math.max(
+                          0.0,
+                          constraints.maxWidth - _yAxisWidth - _yAxisGap,
+                        );
+                        final chartHeight = math.max(
+                          0.0,
+                          constraints.maxHeight -
+                              _bottomTitleReservedSize -
+                              _scrollbarThickness -
+                              _scrollbarTopSpacing,
+                        );
+                        final chartAreaHeight = math.max(
+                          0.0,
+                          constraints.maxHeight -
+                              _scrollbarThickness -
+                              _scrollbarTopSpacing,
+                        );
+                        final dayWidth = _resolveDayWidth(plotViewportWidth);
+                        final chartWidth = math.max(
+                          plotViewportWidth,
+                          _chartRightPadding + ((_chartDaySpan + 1) * dayWidth),
+                        );
 
-                          return Row(
-                            children: [
-                              SizedBox(
-                                width: _yAxisWidth,
-                                child: _buildFixedYAxis(theme),
-                              ),
-                              const SizedBox(width: _yAxisGap),
-                              Expanded(
-                                child: Column(
-                                  children: [
-                                    SizedBox(
-                                      height: chartAreaHeight,
-                                      child: Stack(
-                                        children: [
-                                          RepaintBoundary(
-                                            child: SingleChildScrollView(
-                                              controller:
-                                                  _chartScrollController,
-                                              physics:
-                                                  const ClampingScrollPhysics(),
-                                              scrollDirection: Axis.horizontal,
-                                              child: SizedBox(
-                                                width: chartWidth,
-                                                height: chartAreaHeight,
-                                                child: CustomPaint(
-                                                  painter: _PeakFlowChartPainter(
-                                                    theme: theme,
-                                                    points: chartPoints,
-                                                    selectedPoint:
-                                                        selectedPoint,
-                                                    startDate: _chartStartDate,
-                                                    daySpan: _chartDaySpan,
-                                                    maxVolume: maxVolume,
-                                                    colorReferenceMaxVolume:
-                                                        colorReferenceMaxVolume,
-                                                    dayWidth: dayWidth,
-                                                    chartRightPadding:
-                                                        _chartRightPadding,
-                                                    bottomTitleReservedSize:
-                                                        _bottomTitleReservedSize,
-                                                    viewportWidth:
-                                                        plotViewportWidth,
-                                                    scrollController:
-                                                        _chartScrollController,
-                                                  ),
+                        return Row(
+                          children: [
+                            SizedBox(
+                              width: _yAxisWidth,
+                              child: _buildFixedYAxis(theme),
+                            ),
+                            const SizedBox(width: _yAxisGap),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  SizedBox(
+                                    height: chartAreaHeight,
+                                    child: Stack(
+                                      children: [
+                                        RepaintBoundary(
+                                          child: SingleChildScrollView(
+                                            controller: _chartScrollController,
+                                            physics:
+                                                const ClampingScrollPhysics(),
+                                            scrollDirection: Axis.horizontal,
+                                            child: SizedBox(
+                                              width: chartWidth,
+                                              height: chartAreaHeight,
+                                              child: CustomPaint(
+                                                painter: _PeakFlowChartPainter(
+                                                  theme: theme,
+                                                  points: chartPoints,
+                                                  selectedPoint: selectedPoint,
+                                                  startDate: _chartStartDate,
+                                                  daySpan: _chartDaySpan,
+                                                  maxVolume: maxVolume,
+                                                  colorReferenceMaxVolume:
+                                                      colorReferenceMaxVolume,
+                                                  dayWidth: dayWidth,
+                                                  chartRightPadding:
+                                                      _chartRightPadding,
+                                                  bottomTitleReservedSize:
+                                                      _bottomTitleReservedSize,
+                                                  viewportWidth:
+                                                      plotViewportWidth,
+                                                  scrollController:
+                                                      _chartScrollController,
                                                 ),
                                               ),
                                             ),
                                           ),
-                                          Positioned.fill(
-                                            child: GestureDetector(
-                                              behavior: HitTestBehavior.opaque,
-                                              onTapDown: (details) =>
-                                                  _selectPointAtPosition(
-                                                    localPosition:
-                                                        details.localPosition,
-                                                    chartHeight: chartHeight,
-                                                    dayWidth: dayWidth,
-                                                  ),
-                                              onHorizontalDragUpdate:
-                                                  (details) => _dragChartBy(
-                                                    details.delta.dx,
-                                                  ),
-                                            ),
+                                        ),
+                                        Positioned.fill(
+                                          child: GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTapDown: (details) =>
+                                                _selectPointAtPosition(
+                                                  localPosition:
+                                                      details.localPosition,
+                                                  chartHeight: chartHeight,
+                                                  dayWidth: dayWidth,
+                                                ),
+                                            onHorizontalDragUpdate: (details) =>
+                                                _dragChartBy(details.delta.dx),
                                           ),
-                                          _buildTooltipOverlay(
-                                            theme: theme,
-                                            viewportWidth: plotViewportWidth,
-                                            chartHeight: chartHeight,
-                                            dayWidth: dayWidth,
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                        _buildTooltipOverlay(
+                                          theme: theme,
+                                          viewportWidth: plotViewportWidth,
+                                          chartHeight: chartHeight,
+                                          dayWidth: dayWidth,
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(
-                                      height: _scrollbarTopSpacing,
-                                    ),
-                                    _ChartScrollbar(
-                                      controller: _chartScrollController,
-                                      theme: theme,
-                                      thickness: _scrollbarThickness,
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(height: _scrollbarTopSpacing),
+                                  _ChartScrollbar(
+                                    controller: _chartScrollController,
+                                    theme: theme,
+                                    thickness: _scrollbarThickness,
+                                  ),
+                                ],
                               ),
-                            ],
-                          );
-                        },
-                      ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
+          );
+
+    if (!widget.showScaffold) {
+      return body;
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Data')),
+      body: body,
     );
   }
 }

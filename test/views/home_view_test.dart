@@ -42,7 +42,10 @@ void main() {
       expect(find.byKey(handleKey), findsOneWidget);
 
       final scrollableState = tester.state<ScrollableState>(
-        find.byType(Scrollable),
+        find.descendant(
+          of: find.byKey(const ValueKey('homeTimelineScrollView')),
+          matching: find.byType(Scrollable),
+        ),
       );
       final initialOffset = scrollableState.position.pixels;
 
