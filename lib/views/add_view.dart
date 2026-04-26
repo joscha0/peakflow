@@ -385,7 +385,7 @@ class _AddViewState extends ConsumerState<AddView> {
             noteDayController.text,
             checkboxValues,
           );
-          ref.read(entryListProvider.notifier).loadEntries();
+          await ref.read(entryListProvider.notifier).loadEntries();
           if (!context.mounted) {
             return;
           }

@@ -389,7 +389,7 @@ class _DayViewState extends ConsumerState<DayView> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          Navigator.of(context).pushReplacement(
+          Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => AddView(date: widget.dayEntry.date),
             ),
