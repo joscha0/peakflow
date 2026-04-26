@@ -92,8 +92,8 @@ class _HomeViewState extends ConsumerState<HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = ref.watch(entryListProvider);
-    final yearSections = _buildSections(entries);
+    final timelineEntries = ref.watch(timelineEntryListProvider);
+    final yearSections = _buildSections(timelineEntries);
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = _getCrossAxisCount(constraints.maxWidth);
@@ -114,7 +114,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
                         ? _TimelinePage(
                             key: const ValueKey('timelinePage'),
                             scrollController: _scrollController,
-                            entries: entries,
+                            entries: timelineEntries,
                             yearSections: yearSections,
                             crossAxisCount: crossAxisCount,
                             viewportWidth: constraints.maxWidth,

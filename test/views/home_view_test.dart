@@ -6,11 +6,42 @@ import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/providers/day_entries_state.dart';
 import 'package:peakflow/views/home_view.dart';
+import 'package:peakflow/widgets/date_widget.dart';
 
 import '../test_helpers/widget_test_setup.dart';
 
 void main() {
   setUpWidgetTestDatabase();
+
+  testWidgets('timeline displays entries from newest to oldest', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final entries = buildMockDayEntries(count: 12);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          entryListProvider.overrideWith(
+            (ref) => _SeededDayEntriesState(entries),
+          ),
+        ],
+        child: const MaterialApp(home: HomeView()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+
+    final firstDateWidget = tester.widget<DateWidget>(
+      find.byType(DateWidget).first,
+    );
+
+    expect(firstDateWidget.dayEntry.date, DateTime(2026, 4, 20));
+  });
 
   testWidgets(
     'timeline scrollbar scrolls and reveals date anchors while dragging',
