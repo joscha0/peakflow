@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/debug/mock_data.dart';
 import 'package:peakflow/global/consts.dart';
-import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/services/notification_service.dart';
@@ -150,68 +148,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     setState(() {
       colorMaxController.text = value.toString();
     });
-  }
-
-  List<List<String>> dayEntryToCsvList(DayEntry entry) {
-    final listItems = <List<String>>[];
-    final date = entry.date.toIso8601String().split('T').first;
-
-    final checkboxes = <String>[];
-    for (final checkbox in entry.checkboxValues.keys) {
-      if (entry.checkboxValues[checkbox] ?? false) {
-        checkboxes.add(checkbox);
-      }
-    }
-
-    for (final reading in entry.readings) {
-      listItems.add([
-        date,
-        "${reading.time.hour}:${reading.time.minute}",
-        reading.value.toString(),
-        reading.note,
-        entry.note,
-        checkboxes.join(', '),
-      ]);
-    }
-
-    return listItems;
-  }
-
-  Future<void> exportCSV() async {
-    if (isDataTransferInProgress) {
-      return;
-    }
-
-    setState(() {
-      isDataTransferInProgress = true;
-    });
-
-    final listItems = <List<String>>[
-      ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
-    ];
-
-    try {
-      final entries = await getDayEntries();
-
-      for (final entry in entries) {
-        listItems.addAll(dayEntryToCsvList(entry));
-      }
-
-      final csv = const ListToCsvConverter().convert(listItems);
-      await _saveExportFile(
-        dialogTitle: 'Export CSV',
-        fileName: 'peakflow-export.csv',
-        extension: 'csv',
-        bytes: Uint8List.fromList(utf8.encode(csv)),
-        successMessage: 'CSV export saved.',
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isDataTransferInProgress = false;
-        });
-      }
-    }
   }
 
   Future<void> _saveExportFile({
@@ -1181,16 +1117,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               _buildSectionLabel(
                 context,
                 'Data',
-                'Create a portable backup of your readings and notes.',
+                'Create or restore a portable backup of your readings and notes.',
               ),
               _buildSectionContent([
-                _buildInfoRow(
-                  context,
-                  icon: Icons.file_download_outlined,
-                  title: 'Export as CSV',
-                  description:
-                      'Share a spreadsheet-friendly export of your peak flow history.',
-                ),
                 _buildInfoRow(
                   context,
                   icon: Icons.data_object_outlined,
@@ -1204,11 +1133,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: isDataTransferInProgress ? null : exportCSV,
-                        icon: const Icon(Icons.ios_share_outlined),
-                        label: const Text("EXPORT CSV"),
-                      ),
                       ElevatedButton.icon(
                         onPressed: isDataTransferInProgress
                             ? null

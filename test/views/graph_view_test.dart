@@ -58,6 +58,9 @@ void main() {
     expect(find.text('337 L/min'), findsOneWidget);
     expect(find.text('Measurements'), findsOneWidget);
     expect(find.text('4 times'), findsOneWidget);
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.text('PDF Report'), findsOneWidget);
+    expect(find.text('CSV Report'), findsOneWidget);
   });
 
   testWidgets('date range controls stay fixed while graph content scrolls', (

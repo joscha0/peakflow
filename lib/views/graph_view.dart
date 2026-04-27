@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -50,6 +52,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
   List<_ChartPoint> chartPoints = const [];
   _ChartPoint? selectedPoint;
   bool isGeneratingPdfReport = false;
+  bool isGeneratingCsvReport = false;
 
   final ScrollController _chartScrollController = ScrollController();
 
@@ -510,10 +513,56 @@ class _GraphViewState extends ConsumerState<GraphView> {
     return 'peakflow-report-${formatter.format(activeRange.start)}-${formatter.format(activeRange.end)}.pdf';
   }
 
+  String _csvReportFileName() {
+    final activeRange = range;
+    final formatter = intl.DateFormat('yyyyMMdd');
+    if (activeRange == null) {
+      return 'peakflow-report.csv';
+    }
+    return 'peakflow-report-${formatter.format(activeRange.start)}-${formatter.format(activeRange.end)}.csv';
+  }
+
   void _showReportMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  List<List<String>> _dayEntryToCsvRows(DayEntry entry) {
+    final rows = <List<String>>[];
+    final date = entry.date.toIso8601String().split('T').first;
+    final symptoms = _symptomsForEntry(entry).join(', ');
+    final sortedReadings = [...entry.readings]
+      ..sort((first, second) {
+        final firstMinutes = (first.time.hour * 60) + first.time.minute;
+        final secondMinutes = (second.time.hour * 60) + second.time.minute;
+        return firstMinutes.compareTo(secondMinutes);
+      });
+
+    for (final reading in sortedReadings) {
+      rows.add([
+        date,
+        '${reading.time.hour.toString().padLeft(2, '0')}:${reading.time.minute.toString().padLeft(2, '0')}',
+        reading.value.toString(),
+        reading.note,
+        entry.note,
+        symptoms,
+      ]);
+    }
+
+    return rows;
+  }
+
+  String _buildSelectedRangeCsv() {
+    final rows = <List<String>>[
+      ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
+    ];
+
+    for (final entry in entriesFiltered) {
+      rows.addAll(_dayEntryToCsvRows(entry));
+    }
+
+    return const ListToCsvConverter().convert(rows);
   }
 
   Future<void> _generatePdfReport(int effectiveColorReferenceMaxVolume) async {
@@ -558,6 +607,47 @@ class _GraphViewState extends ConsumerState<GraphView> {
       if (mounted) {
         setState(() {
           isGeneratingPdfReport = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _generateCsvReport() async {
+    if (isGeneratingCsvReport) {
+      return;
+    }
+
+    setState(() {
+      isGeneratingCsvReport = true;
+    });
+
+    try {
+      final csv = _buildSelectedRangeCsv();
+      final outputPath = await FilePicker.saveFile(
+        dialogTitle: 'Save CSV Report',
+        fileName: _csvReportFileName(),
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (outputPath != null || kIsWeb) {
+        _showReportMessage(
+          kIsWeb ? 'CSV report download started.' : 'CSV report saved.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showReportMessage('Could not generate the CSV report.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isGeneratingCsvReport = false;
         });
       }
     }
@@ -712,38 +802,106 @@ class _GraphViewState extends ConsumerState<GraphView> {
     );
   }
 
-  Widget _buildPdfReportButton(
+  Widget _buildReportSection(
     ThemeData theme,
     int effectiveColorReferenceMaxVolume,
   ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          onPressed: chartPoints.isEmpty || isGeneratingPdfReport
-              ? null
-              : () => _generatePdfReport(effectiveColorReferenceMaxVolume),
-          icon: isGeneratingPdfReport
-              ? SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: theme.colorScheme.onPrimary,
-                  ),
-                )
-              : const Icon(Icons.picture_as_pdf_rounded),
-          label: Text(
-            isGeneratingPdfReport ? 'Generating Report' : 'Generate PDF Report',
-          ),
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Reports',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            'Export Report for $_activeRangeLabel',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.64),
+            ),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth >= 520;
+              final pdfButton = FilledButton.icon(
+                onPressed: chartPoints.isEmpty || isGeneratingPdfReport
+                    ? null
+                    : () =>
+                          _generatePdfReport(effectiveColorReferenceMaxVolume),
+                icon: isGeneratingPdfReport
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.picture_as_pdf_rounded),
+                label: Text(
+                  isGeneratingPdfReport ? 'Generating PDF' : 'PDF Report',
+                ),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              );
+              final csvButton = OutlinedButton.icon(
+                onPressed: chartPoints.isEmpty || isGeneratingCsvReport
+                    ? null
+                    : _generateCsvReport,
+                icon: isGeneratingCsvReport
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                    : const Icon(Icons.table_chart_outlined),
+                label: Text(
+                  isGeneratingCsvReport ? 'Generating CSV' : 'CSV Report',
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              );
+
+              if (isWide) {
+                return Row(
+                  children: [
+                    Expanded(child: pdfButton),
+                    const SizedBox(width: 12),
+                    Expanded(child: csvButton),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [pdfButton, const SizedBox(height: 10), csvButton],
+              );
+            },
+          ),
+          SizedBox(height: 100),
+        ],
       ),
     );
   }
@@ -1115,7 +1273,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                         ),
                       ),
                       _buildSelectedRangeStats(theme),
-                      _buildPdfReportButton(
+                      _buildReportSection(
                         theme,
                         effectiveColorReferenceMaxVolume,
                       ),
