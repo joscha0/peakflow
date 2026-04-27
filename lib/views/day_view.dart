@@ -374,12 +374,8 @@ class _DayViewState extends ConsumerState<DayView> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => AddView(date: widget.dayEntry.date),
-            ),
-          );
+        onPressed: () async {
+          await showAddReadingDrawer(context, date: widget.dayEntry.date);
         },
         label: const Text("Add reading"),
         icon: const Icon(Icons.add),

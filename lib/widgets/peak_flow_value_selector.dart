@@ -198,7 +198,7 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
                 runSpacing: 8,
                 children: [
                   _ZoneChip(label: '<50%', color: const Color(0xFFC62828)),
-                  _ZoneChip(label: '50-79%', color: const Color(0xFFF9A825)),
+                  _ZoneChip(label: '50-80%', color: const Color(0xFFF9A825)),
                   _ZoneChip(label: '80-100%', color: const Color(0xFF2E7D32)),
                 ],
               ),

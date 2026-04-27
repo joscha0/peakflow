@@ -173,9 +173,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
           ),
           floatingActionButton: FloatingActionButton(
             onPressed: () async {
-              await Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const AddView()));
+              await showAddReadingDrawer(context);
               await _refreshHomeData();
             },
             child: const Icon(Icons.add),
