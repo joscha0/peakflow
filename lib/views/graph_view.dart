@@ -1625,6 +1625,12 @@ class _PeakFlowChartPainter extends CustomPainter {
       visibleLeft: visibleLeft,
       visibleRight: visibleRight,
     );
+    _paintAverageLine(
+      canvas: canvas,
+      plotHeight: plotHeight,
+      visibleLeft: visibleLeft,
+      visibleRight: visibleRight,
+    );
     _paintLine(
       canvas: canvas,
       plotHeight: plotHeight,
@@ -1632,6 +1638,12 @@ class _PeakFlowChartPainter extends CustomPainter {
       visibleRight: visibleRight,
     );
     _paintSelection(
+      canvas: canvas,
+      plotHeight: plotHeight,
+      visibleLeft: visibleLeft,
+      visibleRight: visibleRight,
+    );
+    _paintZoneLabels(
       canvas: canvas,
       plotHeight: plotHeight,
       visibleLeft: visibleLeft,
@@ -1714,6 +1726,83 @@ class _PeakFlowChartPainter extends CustomPainter {
     canvas.restore();
   }
 
+  void _paintZoneLabels({
+    required Canvas canvas,
+    required double plotHeight,
+    required double visibleLeft,
+    required double visibleRight,
+  }) {
+    final safeReferenceMax = colorReferenceMaxVolume.clamp(1, maxVolume);
+    final redLimit = safeReferenceMax * 0.5;
+    final orangeLimit = safeReferenceMax * 0.8;
+
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(visibleLeft, 0, visibleRight, plotHeight));
+
+    _paintZoneLabel(
+      canvas: canvas,
+      label: 'Stable',
+      color: const Color(0xFF43A047),
+      top: _yForValue(safeReferenceMax.toDouble(), plotHeight),
+      bottom: _yForValue(orangeLimit.toDouble(), plotHeight),
+      visibleLeft: visibleLeft,
+      visibleRight: visibleRight,
+    );
+    _paintZoneLabel(
+      canvas: canvas,
+      label: 'Caution',
+      color: const Color(0xFFFFB300),
+      top: _yForValue(orangeLimit.toDouble(), plotHeight),
+      bottom: _yForValue(redLimit.toDouble(), plotHeight),
+      visibleLeft: visibleLeft,
+      visibleRight: visibleRight,
+    );
+    _paintZoneLabel(
+      canvas: canvas,
+      label: 'Action Needed',
+      color: const Color(0xFFE53935),
+      top: _yForValue(redLimit.toDouble(), plotHeight),
+      bottom: plotHeight,
+      visibleLeft: visibleLeft,
+      visibleRight: visibleRight,
+    );
+
+    canvas.restore();
+  }
+
+  void _paintZoneLabel({
+    required Canvas canvas,
+    required String label,
+    required Color color,
+    required double top,
+    required double bottom,
+    required double visibleLeft,
+    required double visibleRight,
+  }) {
+    final zoneHeight = bottom - top;
+    if (zoneHeight < 18 || visibleRight <= visibleLeft) {
+      return;
+    }
+
+    final textStyle = theme.textTheme.labelSmall?.copyWith(
+      color: color,
+      fontWeight: FontWeight.w700,
+    );
+    final maxWidth = math.max(0.0, visibleRight - visibleLeft - 8);
+    final textPainter = TextPainter(
+      text: TextSpan(text: label, style: textStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxWidth);
+
+    final labelTop = zoneHeight >= textPainter.height + 8
+        ? top + 2
+        : top + ((zoneHeight - textPainter.height) / 2);
+    final dx = visibleRight - textPainter.width - 3;
+    textPainter.paint(canvas, Offset(dx, labelTop));
+  }
+
   void _paintGrid({
     required Canvas canvas,
     required double plotHeight,
@@ -1722,6 +1811,12 @@ class _PeakFlowChartPainter extends CustomPainter {
   }) {
     final dividerColor = theme.dividerColor;
     final chartStartDate = startDate;
+    final isLightMode = theme.brightness == Brightness.light;
+    final majorHorizontalAlpha = isLightMode ? 0.18 : 0.32;
+    final minorHorizontalAlpha = isLightMode ? 0.07 : 0.12;
+    final extraHorizontalAlpha = isLightMode ? 0.18 : 0.32;
+    final monthBoundaryAlpha = isLightMode ? 0.14 : 0.22;
+    final minorVerticalAlpha = isLightMode ? 0.05 : 0.08;
 
     canvas.save();
     canvas.clipRect(Rect.fromLTRB(visibleLeft, 0, visibleRight, plotHeight));
@@ -1733,9 +1828,11 @@ class _PeakFlowChartPainter extends CustomPainter {
         Offset(visibleRight, y),
         Paint()
           ..color = dividerColor.withValues(
-            alpha: value % 100 == 0 ? 0.75 : 0.35,
+            alpha: value % 100 == 0
+                ? majorHorizontalAlpha
+                : minorHorizontalAlpha,
           )
-          ..strokeWidth = value % 100 == 0 ? 1.4 : 0.8,
+          ..strokeWidth = value % 100 == 0 ? 0.9 : 0.6,
       );
     }
     if (maxVolume % 50 != 0) {
@@ -1744,8 +1841,8 @@ class _PeakFlowChartPainter extends CustomPainter {
         Offset(visibleLeft, y),
         Offset(visibleRight, y),
         Paint()
-          ..color = dividerColor.withValues(alpha: 0.75)
-          ..strokeWidth = 1.4,
+          ..color = dividerColor.withValues(alpha: extraHorizontalAlpha)
+          ..strokeWidth = 0.9,
       );
     }
 
@@ -1766,13 +1863,71 @@ class _PeakFlowChartPainter extends CustomPainter {
         Offset(x, plotHeight),
         Paint()
           ..color = dividerColor.withValues(
-            alpha: isMonthBoundary ? 0.52 : 0.22,
+            alpha: isMonthBoundary ? monthBoundaryAlpha : minorVerticalAlpha,
           )
-          ..strokeWidth = isMonthBoundary ? 1.4 : 0.8,
+          ..strokeWidth = isMonthBoundary ? 0.8 : 0.55,
       );
     }
 
     canvas.restore();
+  }
+
+  void _paintAverageLine({
+    required Canvas canvas,
+    required double plotHeight,
+    required double visibleLeft,
+    required double visibleRight,
+  }) {
+    if (points.isEmpty || visibleRight <= visibleLeft) {
+      return;
+    }
+
+    final total = points.fold<int>(0, (sum, point) => sum + point.value);
+    final average = total / points.length;
+    final y = _yForValue(average, plotHeight);
+    final paint = Paint()
+      ..color = theme.colorScheme.onSurface.withValues(alpha: 0.62)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+
+    canvas.save();
+    canvas.clipRect(Rect.fromLTRB(visibleLeft, 0, visibleRight, plotHeight));
+    _drawDashedLine(
+      canvas: canvas,
+      start: Offset(visibleLeft, y),
+      end: Offset(visibleRight, y),
+      paint: paint,
+      dashWidth: 7,
+      gapWidth: 6,
+    );
+    canvas.restore();
+  }
+
+  void _drawDashedLine({
+    required Canvas canvas,
+    required Offset start,
+    required Offset end,
+    required Paint paint,
+    required double dashWidth,
+    required double gapWidth,
+  }) {
+    final delta = end - start;
+    final distance = delta.distance;
+    if (distance <= 0) {
+      return;
+    }
+
+    final direction = delta / distance;
+    var drawn = 0.0;
+    while (drawn < distance) {
+      final dashEnd = math.min(drawn + dashWidth, distance);
+      canvas.drawLine(
+        start + (direction * drawn),
+        start + (direction * dashEnd),
+        paint,
+      );
+      drawn = dashEnd + gapWidth;
+    }
   }
 
   void _paintLine({
