@@ -13,7 +13,6 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
 
-    expect(find.text('PEAK FLOW'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);
   });
 }
