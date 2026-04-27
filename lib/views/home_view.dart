@@ -377,6 +377,12 @@ class _FloatingPageNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final inactiveForeground = theme.colorScheme.onSurface.withValues(
+      alpha: 0.72,
+    );
+    final activeForeground = theme.colorScheme.onPrimary;
+    const duration = Duration(milliseconds: 240);
+    const curve = Curves.easeOutCubic;
 
     return Material(
       color: theme.colorScheme.surface,
@@ -388,44 +394,103 @@ class _FloatingPageNav extends StatelessWidget {
         child: SizedBox(
           width: _itemWidth * 2,
           height: _itemHeight,
-          child: Stack(
-            children: [
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
-                left: selectedPageIndex * _itemWidth,
-                top: 0,
-                bottom: 0,
-                width: _itemWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              Row(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: selectedPageIndex.toDouble()),
+            duration: duration,
+            curve: curve,
+            builder: (context, thumbPosition, _) {
+              final thumbLeft = thumbPosition * _itemWidth;
+
+              return Stack(
                 children: [
-                  _FloatingPageNavItem(
+                  Positioned(
+                    left: thumbLeft,
+                    top: 0,
+                    bottom: 0,
                     width: _itemWidth,
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Timeline',
-                    isSelected: selectedPageIndex == 0,
-                    onTap: () => onSelected(_HomePage.timeline),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
                   ),
-                  _FloatingPageNavItem(
+                  _FloatingPageNavItems(
+                    selectedPageIndex: selectedPageIndex,
+                    foreground: inactiveForeground,
+                    onSelected: onSelected,
+                  ),
+                  Positioned(
+                    left: thumbLeft,
+                    top: 0,
+                    bottom: 0,
                     width: _itemWidth,
-                    icon: Icons.show_chart,
-                    label: 'Graph',
-                    isSelected: selectedPageIndex == 1,
-                    onTap: () => onSelected(_HomePage.graph),
+                    child: ExcludeSemantics(
+                      child: IgnorePointer(
+                        child: ClipRect(
+                          child: OverflowBox(
+                            minWidth: _itemWidth * 2,
+                            maxWidth: _itemWidth * 2,
+                            alignment: Alignment.centerLeft,
+                            child: Transform.translate(
+                              offset: Offset(-thumbLeft, 0),
+                              child: SizedBox(
+                                width: _itemWidth * 2,
+                                height: _itemHeight,
+                                child: _FloatingPageNavItems(
+                                  selectedPageIndex: selectedPageIndex,
+                                  foreground: activeForeground,
+                                  onSelected: onSelected,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
-              ),
-            ],
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FloatingPageNavItems extends StatelessWidget {
+  final int selectedPageIndex;
+  final Color foreground;
+  final ValueChanged<_HomePage> onSelected;
+
+  const _FloatingPageNavItems({
+    required this.selectedPageIndex,
+    required this.foreground,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _FloatingPageNavItem(
+          width: _FloatingPageNav._itemWidth,
+          icon: Icons.calendar_today_outlined,
+          label: 'Timeline',
+          foreground: foreground,
+          isSelected: selectedPageIndex == 0,
+          onTap: () => onSelected(_HomePage.timeline),
+        ),
+        _FloatingPageNavItem(
+          width: _FloatingPageNav._itemWidth,
+          icon: Icons.show_chart,
+          label: 'Graph',
+          foreground: foreground,
+          isSelected: selectedPageIndex == 1,
+          onTap: () => onSelected(_HomePage.graph),
+        ),
+      ],
     );
   }
 }
@@ -434,6 +499,7 @@ class _FloatingPageNavItem extends StatelessWidget {
   final double width;
   final IconData icon;
   final String label;
+  final Color foreground;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -441,6 +507,7 @@ class _FloatingPageNavItem extends StatelessWidget {
     required this.width,
     required this.icon,
     required this.label,
+    required this.foreground,
     required this.isSelected,
     required this.onTap,
   });
@@ -448,9 +515,6 @@ class _FloatingPageNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final foreground = isSelected
-        ? theme.colorScheme.onPrimary
-        : theme.colorScheme.onSurface.withValues(alpha: 0.72);
 
     return Semantics(
       button: true,
