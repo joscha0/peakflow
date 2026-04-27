@@ -1,9 +1,14 @@
 import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' as intl;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:peakflow/db/prefs.dart';
+import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/widgets/system_gesture_exclusion_region.dart';
@@ -44,6 +49,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
   _GraphRangePreset selectedRangePreset = _GraphRangePreset.all;
   List<_ChartPoint> chartPoints = const [];
   _ChartPoint? selectedPoint;
+  bool isGeneratingPdfReport = false;
 
   final ScrollController _chartScrollController = ScrollController();
 
@@ -442,6 +448,121 @@ class _GraphViewState extends ConsumerState<GraphView> {
   _MeasurementStats get _selectedRangeStats =>
       _MeasurementStats.fromPoints(chartPoints);
 
+  List<_ReportDay> _selectedRangeReportDays() {
+    final days = <_ReportDay>[];
+    for (final entry in entriesFiltered) {
+      final sortedReadings = [...entry.readings]
+        ..sort((first, second) {
+          final firstMinutes = (first.time.hour * 60) + first.time.minute;
+          final secondMinutes = (second.time.hour * 60) + second.time.minute;
+          return firstMinutes.compareTo(secondMinutes);
+        });
+
+      final readings = <_ReportReading>[
+        for (final reading in sortedReadings)
+          _ReportReading(
+            dateTime: DateTime(
+              entry.date.year,
+              entry.date.month,
+              entry.date.day,
+              reading.time.hour,
+              reading.time.minute,
+            ),
+            value: reading.value,
+            note: reading.note,
+          ),
+      ];
+
+      days.add(
+        _ReportDay(
+          date: entry.date,
+          note: entry.note,
+          symptoms: _symptomsForEntry(entry),
+          readings: readings,
+        ),
+      );
+    }
+    return days;
+  }
+
+  List<String> _symptomsForEntry(DayEntry entry) {
+    final values = entry.checkboxValues;
+    final symptoms = <String>[
+      for (final symptom in defaultCheckboxValues.keys)
+        if (values[symptom] ?? false) symptom,
+    ];
+
+    for (final item in values.entries) {
+      if (item.value && !symptoms.contains(item.key)) {
+        symptoms.add(item.key);
+      }
+    }
+
+    return symptoms;
+  }
+
+  String _reportFileName() {
+    final activeRange = range;
+    final formatter = intl.DateFormat('yyyyMMdd');
+    if (activeRange == null) {
+      return 'peakflow-report.pdf';
+    }
+    return 'peakflow-report-${formatter.format(activeRange.start)}-${formatter.format(activeRange.end)}.pdf';
+  }
+
+  void _showReportMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  Future<void> _generatePdfReport(int effectiveColorReferenceMaxVolume) async {
+    if (isGeneratingPdfReport) {
+      return;
+    }
+
+    setState(() {
+      isGeneratingPdfReport = true;
+    });
+
+    try {
+      final report = _PeakFlowPdfReport(
+        rangeLabel: _activeRangeLabel,
+        days: _selectedRangeReportDays(),
+        maxVolume: maxVolume,
+        referenceMaxVolume: effectiveColorReferenceMaxVolume,
+      );
+      final bytes = await report.build();
+      final outputPath = await FilePicker.saveFile(
+        dialogTitle: 'Save PDF Report',
+        fileName: _reportFileName(),
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        bytes: bytes,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (outputPath != null || kIsWeb) {
+        _showReportMessage(
+          kIsWeb ? 'PDF report download started.' : 'PDF report saved.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showReportMessage('Could not generate the PDF report.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isGeneratingPdfReport = false;
+        });
+      }
+    }
+  }
+
   List<int> get _yAxisValues {
     final values = <int>[];
     for (int value = 0; value <= maxVolume; value += 50) {
@@ -587,6 +708,42 @@ class _GraphViewState extends ConsumerState<GraphView> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildPdfReportButton(
+    ThemeData theme,
+    int effectiveColorReferenceMaxVolume,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: chartPoints.isEmpty || isGeneratingPdfReport
+              ? null
+              : () => _generatePdfReport(effectiveColorReferenceMaxVolume),
+          icon: isGeneratingPdfReport
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: theme.colorScheme.onPrimary,
+                  ),
+                )
+              : const Icon(Icons.picture_as_pdf_rounded),
+          label: Text(
+            isGeneratingPdfReport ? 'Generating Report' : 'Generate PDF Report',
+          ),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -947,6 +1104,11 @@ class _GraphViewState extends ConsumerState<GraphView> {
                     ),
                   ),
                 if (range != null) _buildSelectedRangeStats(theme),
+                if (range != null)
+                  _buildPdfReportButton(
+                    theme,
+                    effectiveColorReferenceMaxVolume,
+                  ),
               ],
             ),
           );
@@ -1211,6 +1373,570 @@ class _ChartPoint {
   final int value;
   final DateTime date;
   final String label;
+}
+
+class _ReportReading {
+  const _ReportReading({
+    required this.dateTime,
+    required this.value,
+    required this.note,
+  });
+
+  final DateTime dateTime;
+  final int value;
+  final String note;
+}
+
+class _ReportDay {
+  const _ReportDay({
+    required this.date,
+    required this.note,
+    required this.symptoms,
+    required this.readings,
+  });
+
+  final DateTime date;
+  final String note;
+  final List<String> symptoms;
+  final List<_ReportReading> readings;
+}
+
+class _ReportMonth {
+  const _ReportMonth({required this.month, required this.days});
+
+  final DateTime month;
+  final List<_ReportDay> days;
+
+  List<_ReportReading> get readings => [
+    for (final day in days) ...day.readings,
+  ];
+}
+
+enum _PeakFlowZone { stable, caution, actionNeeded }
+
+class _ZoneTotals {
+  const _ZoneTotals({
+    required this.stable,
+    required this.caution,
+    required this.actionNeeded,
+    required this.actionNeededReadings,
+  });
+
+  final int stable;
+  final int caution;
+  final int actionNeeded;
+  final List<_ReportReading> actionNeededReadings;
+}
+
+class _PeakFlowPdfReport {
+  _PeakFlowPdfReport({
+    required this.rangeLabel,
+    required this.days,
+    required this.maxVolume,
+    required this.referenceMaxVolume,
+  });
+
+  static final intl.DateFormat _dateFormat = intl.DateFormat.yMMMd();
+  static final intl.DateFormat _dateTimeFormat = intl.DateFormat.yMMMd()
+      .add_Hm();
+  static final intl.DateFormat _timeFormat = intl.DateFormat.Hm();
+  static final intl.DateFormat _generatedFormat = intl.DateFormat.yMMMd()
+      .add_Hm();
+  static final intl.DateFormat _monthFormat = intl.DateFormat.yMMMM();
+
+  final String rangeLabel;
+  final List<_ReportDay> days;
+  final int maxVolume;
+  final int referenceMaxVolume;
+
+  List<_ReportReading> get readings => [
+    for (final day in days) ...day.readings,
+  ];
+
+  Future<Uint8List> build() async {
+    final document = pw.Document();
+    final zoneTotals = _buildZoneTotals();
+    final stats = _statsFromReadings(readings);
+    final months = _buildMonths();
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        footer: (context) => pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Page ${context.pageNumber} of ${context.pagesCount}',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+          ),
+        ),
+        build: (context) => [
+          pw.Text(
+            'Peak Flow Report',
+            style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text('Range: $rangeLabel'),
+          pw.Text('Generated: ${_generatedFormat.format(DateTime.now())}'),
+          pw.SizedBox(height: 16),
+          _sectionTitle('Stats'),
+          _keyValueGrid([
+            (
+              'Average',
+              stats.count == 0 ? '-' : '${stats.average.round()} L/min',
+            ),
+            ('Highest', stats.count == 0 ? '-' : '${stats.highest} L/min'),
+            ('Lowest', stats.count == 0 ? '-' : '${stats.lowest} L/min'),
+            ('Readings', stats.count.toString()),
+          ]),
+          pw.SizedBox(height: 12),
+          _sectionTitle('Readings By Zone'),
+          _keyValueGrid([
+            ('Stable', zoneTotals.stable.toString()),
+            ('Caution', zoneTotals.caution.toString()),
+            ('Action Needed', zoneTotals.actionNeeded.toString()),
+            ('Reference Max', '$referenceMaxVolume L/min'),
+          ]),
+          pw.SizedBox(height: 10),
+          _sectionTitle('Action Needed Dates'),
+          if (zoneTotals.actionNeededReadings.isEmpty)
+            pw.Text('No readings were in the action needed zone.')
+          else
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                for (final reading in zoneTotals.actionNeededReadings)
+                  pw.Text(
+                    '${_dateTimeFormat.format(reading.dateTime)} - ${reading.value} L/min',
+                  ),
+              ],
+            ),
+          pw.SizedBox(height: 18),
+          if (months.isEmpty)
+            pw.Text('No saved readings in this date range.')
+          else
+            for (final month in months) ..._buildMonthSection(month),
+        ],
+      ),
+    );
+
+    return document.save();
+  }
+
+  _MeasurementStats _statsFromReadings(List<_ReportReading> sourceReadings) {
+    if (sourceReadings.isEmpty) {
+      return const _MeasurementStats(
+        count: 0,
+        average: 0,
+        highest: 0,
+        lowest: 0,
+      );
+    }
+
+    var total = 0;
+    var highest = sourceReadings.first.value;
+    var lowest = sourceReadings.first.value;
+    for (final reading in sourceReadings) {
+      total += reading.value;
+      highest = math.max(highest, reading.value);
+      lowest = math.min(lowest, reading.value);
+    }
+
+    return _MeasurementStats(
+      count: sourceReadings.length,
+      average: total / sourceReadings.length,
+      highest: highest,
+      lowest: lowest,
+    );
+  }
+
+  List<_ReportMonth> _buildMonths() {
+    final grouped = <DateTime, List<_ReportDay>>{};
+    for (final day in days) {
+      final month = DateTime(day.date.year, day.date.month);
+      grouped.putIfAbsent(month, () => <_ReportDay>[]).add(day);
+    }
+
+    final months = grouped.entries
+        .map(
+          (entry) => _ReportMonth(
+            month: entry.key,
+            days: entry.value
+              ..sort((first, second) => first.date.compareTo(second.date)),
+          ),
+        )
+        .toList();
+    months.sort((first, second) => first.month.compareTo(second.month));
+    return months;
+  }
+
+  _ZoneTotals _buildZoneTotals() {
+    var stable = 0;
+    var caution = 0;
+    final actionNeededReadings = <_ReportReading>[];
+
+    for (final reading in readings) {
+      switch (_zoneForValue(reading.value)) {
+        case _PeakFlowZone.stable:
+          stable++;
+        case _PeakFlowZone.caution:
+          caution++;
+        case _PeakFlowZone.actionNeeded:
+          actionNeededReadings.add(reading);
+      }
+    }
+
+    return _ZoneTotals(
+      stable: stable,
+      caution: caution,
+      actionNeeded: actionNeededReadings.length,
+      actionNeededReadings: actionNeededReadings,
+    );
+  }
+
+  _PeakFlowZone _zoneForValue(int value) {
+    final safeReference = math.max(1, referenceMaxVolume);
+    if (value < safeReference * 0.5) {
+      return _PeakFlowZone.actionNeeded;
+    }
+    if (value < safeReference * 0.8) {
+      return _PeakFlowZone.caution;
+    }
+    return _PeakFlowZone.stable;
+  }
+
+  String _zoneLabel(int value) {
+    switch (_zoneForValue(value)) {
+      case _PeakFlowZone.stable:
+        return 'Stable';
+      case _PeakFlowZone.caution:
+        return 'Caution';
+      case _PeakFlowZone.actionNeeded:
+        return 'Action Needed';
+    }
+  }
+
+  List<pw.Widget> _buildMonthSection(_ReportMonth month) {
+    final monthReadings = month.readings;
+    return [
+      pw.NewPage(),
+      pw.Text(
+        _monthFormat.format(month.month),
+        style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+      ),
+      pw.SizedBox(height: 8),
+      _buildMonthGraph(month),
+      pw.SizedBox(height: 12),
+      if (monthReadings.isEmpty)
+        pw.Text('No readings saved this month.')
+      else
+        for (final day in month.days) _buildDayDetails(day),
+      pw.SizedBox(height: 12),
+    ];
+  }
+
+  pw.Widget _buildMonthGraph(_ReportMonth month) {
+    final monthReadings = month.readings;
+    if (monthReadings.isEmpty) {
+      return _emptyGraphBox('No readings to graph for this month.');
+    }
+
+    final daysInMonth = DateTime(
+      month.month.year,
+      month.month.month + 1,
+      0,
+    ).day;
+    final chartEndDay = daysInMonth + 1.0;
+    final safeMaxVolume = math.max(1, maxVolume).toDouble();
+    final safeReference = referenceMaxVolume.clamp(1, maxVolume).toDouble();
+    final redLimit = safeReference * 0.5;
+    final orangeLimit = safeReference * 0.8;
+    final data = monthReadings.map((reading) {
+      final x =
+          reading.dateTime.day +
+          (((reading.dateTime.hour * 60) + reading.dateTime.minute) / 1440);
+      return pw.PointChartValue(x.toDouble(), reading.value.toDouble());
+    }).toList();
+
+    final xAxisValues = <double>[
+      for (var day = 1; day <= daysInMonth + 1; day++) day.toDouble(),
+    ];
+    final yAxisValues = <double>[
+      for (var index = 0; index <= 4; index++) (safeMaxVolume / 4) * index,
+    ];
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(
+          height: 190,
+          child: pw.Chart(
+            grid: pw.CartesianGrid(
+              xAxis: pw.FixedAxis<double>(
+                xAxisValues,
+                divisions: true,
+                divisionsColor: PdfColors.grey300,
+                divisionsWidth: 0.25,
+                textStyle: const pw.TextStyle(
+                  fontSize: 5.5,
+                  color: PdfColor(1, 1, 1, 0),
+                ),
+                angle: -math.pi / 2,
+                format: (value) => value > daysInMonth
+                    ? ''
+                    : value.round().toString().padLeft(2, '0'),
+              ),
+              yAxis: pw.FixedAxis<double>(
+                yAxisValues,
+                divisions: true,
+                divisionsColor: PdfColors.grey400,
+                textStyle: const pw.TextStyle(fontSize: 8),
+                format: (value) => value.round().toString(),
+              ),
+            ),
+            datasets: [
+              _ZoneBandDataSet(
+                minX: 1,
+                maxX: chartEndDay,
+                stableLimit: safeReference,
+                redLimit: redLimit,
+                orangeLimit: orangeLimit,
+              ),
+              _CenteredDayLabelDataSet(daysInMonth: daysInMonth),
+              pw.LineDataSet(
+                data: [
+                  pw.PointChartValue(1, redLimit),
+                  pw.PointChartValue(chartEndDay, redLimit),
+                ],
+                color: PdfColors.red700,
+                lineWidth: 0.8,
+                drawPoints: false,
+              ),
+              pw.LineDataSet(
+                data: [
+                  pw.PointChartValue(1, orangeLimit),
+                  pw.PointChartValue(chartEndDay, orangeLimit),
+                ],
+                color: PdfColors.amber800,
+                lineWidth: 0.8,
+                drawPoints: false,
+              ),
+              pw.LineDataSet(
+                data: data,
+                color: PdfColors.blue700,
+                lineWidth: 1.8,
+                pointSize: 2.6,
+              ),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          'X axis: day of month. Background bands match the app zones.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+        ),
+      ],
+    );
+  }
+
+  pw.Widget _emptyGraphBox(String message) {
+    return pw.Container(
+      height: 120,
+      alignment: pw.Alignment.center,
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey500),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Text(
+        message,
+        style: const pw.TextStyle(color: PdfColors.grey700),
+      ),
+    );
+  }
+
+  pw.Widget _buildDayDetails(_ReportDay day) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey300),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            _dateFormat.format(day.date),
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Day note: ${day.note.trim().isEmpty ? '-' : day.note.trim()}',
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+          pw.Text(
+            'Symptoms: ${day.symptoms.isEmpty ? '-' : day.symptoms.join(', ')}',
+            style: const pw.TextStyle(fontSize: 9),
+          ),
+          pw.SizedBox(height: 6),
+          if (day.readings.isEmpty)
+            pw.Text(
+              'No readings saved for this day.',
+              style: const pw.TextStyle(fontSize: 9),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColors.grey200,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              cellAlignment: pw.Alignment.topLeft,
+              columnWidths: const {
+                0: pw.FixedColumnWidth(48),
+                1: pw.FixedColumnWidth(52),
+                2: pw.FixedColumnWidth(82),
+                3: pw.FlexColumnWidth(),
+              },
+              headers: const ['Time', 'Value', 'Zone', 'Reading note'],
+              data: [
+                for (final reading in day.readings)
+                  [
+                    _timeFormat.format(reading.dateTime),
+                    '${reading.value} L/min',
+                    _zoneLabel(reading.value),
+                    reading.note.trim().isEmpty ? '-' : reading.note.trim(),
+                  ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _sectionTitle(String text) {
+    return pw.Text(
+      text,
+      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+    );
+  }
+
+  pw.Widget _keyValueGrid(List<(String, String)> items) {
+    return pw.Wrap(
+      spacing: 10,
+      runSpacing: 6,
+      children: [
+        for (final item in items)
+          pw.Container(
+            width: 240,
+            padding: const pw.EdgeInsets.all(6),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: pw.BorderRadius.circular(4),
+            ),
+            child: pw.RichText(
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(
+                    text: '${item.$1}: ',
+                    style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.TextSpan(text: item.$2),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ZoneBandDataSet extends pw.Dataset {
+  _ZoneBandDataSet({
+    required this.minX,
+    required this.maxX,
+    required this.stableLimit,
+    required this.redLimit,
+    required this.orangeLimit,
+  });
+
+  final double minX;
+  final double maxX;
+  final double stableLimit;
+  final double redLimit;
+  final double orangeLimit;
+
+  @override
+  void layout(
+    pw.Context context,
+    pw.BoxConstraints constraints, {
+    bool parentUsesSize = false,
+  }) {
+    box = PdfRect.fromPoints(PdfPoint.zero, constraints.biggest);
+  }
+
+  @override
+  void paintBackground(pw.Context context) {
+    final grid = pw.Chart.of(context).grid;
+    final left = grid.toChart(PdfPoint(minX, 0)).x;
+    final right = grid.toChart(PdfPoint(maxX, 0)).x;
+    final bottom = grid.toChart(PdfPoint(minX, 0)).y;
+    final redTop = grid.toChart(PdfPoint(minX, redLimit)).y;
+    final orangeTop = grid.toChart(PdfPoint(minX, orangeLimit)).y;
+    final stableTop = grid.toChart(PdfPoint(minX, stableLimit)).y;
+    final width = right - left;
+
+    void fillBand(double y, double height, PdfColor color) {
+      if (width <= 0 || height <= 0) {
+        return;
+      }
+
+      context.canvas
+        ..setFillColor(color)
+        ..drawRect(left, y, width, height)
+        ..fillPath();
+    }
+
+    fillBand(bottom, redTop - bottom, PdfColors.deepOrange100);
+    fillBand(redTop, orangeTop - redTop, PdfColors.amber100);
+    fillBand(orangeTop, stableTop - orangeTop, PdfColors.green100);
+  }
+}
+
+class _CenteredDayLabelDataSet extends pw.Dataset {
+  _CenteredDayLabelDataSet({required this.daysInMonth});
+
+  final int daysInMonth;
+
+  @override
+  void layout(
+    pw.Context context,
+    pw.BoxConstraints constraints, {
+    bool parentUsesSize = false,
+  }) {
+    box = PdfRect.fromPoints(PdfPoint.zero, constraints.biggest);
+  }
+
+  @override
+  void paintForeground(pw.Context context) {
+    final grid = pw.Chart.of(context).grid;
+
+    for (var day = 1; day <= daysInMonth; day++) {
+      final point = grid.toChart(PdfPoint(day + 0.5, 0));
+      pw.Widget.draw(
+        pw.Transform.rotateBox(
+          angle: -math.pi / 2,
+          child: pw.Text(
+            day.toString(),
+            style: const pw.TextStyle(fontSize: 5.5, color: PdfColors.grey700),
+          ),
+        ),
+        offset: PdfPoint(point.x, point.y - 4),
+        alignment: pw.Alignment.topCenter,
+        context: context,
+      );
+    }
+  }
 }
 
 class _MeasurementStats {
