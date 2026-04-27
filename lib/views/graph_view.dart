@@ -6,6 +6,8 @@ import 'package:intl/intl.dart' as intl;
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
+import 'package:peakflow/widgets/system_gesture_exclusion_region.dart';
+import 'package:peakflow/widgets/timeline_slider_parts.dart';
 
 enum _GraphRangePreset { all, last3Months, last12Months, custom }
 
@@ -23,7 +25,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
   static const double _yAxisWidth = 42;
   static const double _yAxisGap = 0;
   static const double _bottomTitleReservedSize = 58;
-  static const double _scrollbarThickness = 24;
+  static const double _scrollbarThickness = 68;
   static const double _scrollbarTopSpacing = 8;
   static const double _dragScrollMultiplier = 1;
   static const double _minDayWidth = 18;
@@ -544,7 +546,10 @@ class _GraphViewState extends ConsumerState<GraphView> {
       builder: (context, constraints) {
         final chartHeight = math.max(
           0.0,
-          constraints.maxHeight - _bottomTitleReservedSize,
+          constraints.maxHeight -
+              _bottomTitleReservedSize -
+              _scrollbarTopSpacing -
+              _scrollbarThickness,
         );
         final labelStyle = theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurface.withValues(alpha: 0.78),
@@ -554,7 +559,8 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
         return Column(
           children: [
-            Expanded(
+            SizedBox(
+              height: chartHeight,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -579,7 +585,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
                 ],
               ),
             ),
-            const SizedBox(height: _bottomTitleReservedSize),
+            const SizedBox(
+              height:
+                  _bottomTitleReservedSize +
+                  _scrollbarTopSpacing +
+                  _scrollbarThickness,
+            ),
           ],
         );
       },
@@ -813,10 +824,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
                                     ),
                                   ),
                                   const SizedBox(height: _scrollbarTopSpacing),
-                                  _ChartScrollbar(
+                                  _ChartTimelineSlider(
                                     controller: _chartScrollController,
-                                    theme: theme,
                                     thickness: _scrollbarThickness,
+                                    startDate: _chartStartDate,
+                                    endDate: _chartEndDate,
+                                    dayWidth: dayWidth,
                                   ),
                                 ],
                               ),
@@ -1092,157 +1105,305 @@ class _ChartPoint {
   final String label;
 }
 
-class _ChartScrollbar extends StatelessWidget {
-  const _ChartScrollbar({
+class _ChartTimelineSlider extends StatefulWidget {
+  const _ChartTimelineSlider({
     required this.controller,
-    required this.theme,
     required this.thickness,
+    required this.startDate,
+    required this.endDate,
+    required this.dayWidth,
   });
 
   final ScrollController controller;
-  final ThemeData theme;
   final double thickness;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final double dayWidth;
+
+  @override
+  State<_ChartTimelineSlider> createState() => _ChartTimelineSliderState();
+}
+
+class _ChartTimelineSliderState extends State<_ChartTimelineSlider> {
+  static const double _handleWidth = 12;
+  static const double _handleHeight = 44;
+  static const double _trackHeight = 2;
+  static const double _labelWidth = 48;
+  static final intl.DateFormat _monthFormat = intl.DateFormat.MMM();
+
+  bool _isDragging = false;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: thickness,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return AnimatedBuilder(
-            animation: controller,
-            builder: (context, child) {
-              final hasClients = controller.hasClients;
-              final maxScrollExtent = hasClients
-                  ? controller.position.maxScrollExtent
-                  : 0.0;
-              final viewportWidth = hasClients
-                  ? controller.position.viewportDimension
-                  : constraints.maxWidth;
-              final contentWidth = viewportWidth + maxScrollExtent;
-              final minThumbWidth = math.min(constraints.maxWidth, 72.0);
-              final thumbWidth = contentWidth <= 0
-                  ? constraints.maxWidth
-                  : math.max(
-                      minThumbWidth,
-                      constraints.maxWidth * (viewportWidth / contentWidth),
-                    );
-              final availableTravel = math.max(
-                0.0,
-                constraints.maxWidth - thumbWidth,
-              );
-              final thumbLeft = maxScrollExtent <= 0 || availableTravel == 0
-                  ? 0.0
-                  : availableTravel * (controller.offset / maxScrollExtent);
+    final theme = Theme.of(context);
 
-              void jumpToTrackPosition(double localDx) {
-                if (!hasClients ||
-                    maxScrollExtent <= 0 ||
-                    availableTravel == 0) {
-                  return;
+    return SystemGestureExclusionRegion(
+      child: SizedBox(
+        height: widget.thickness,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return AnimatedBuilder(
+              animation: widget.controller,
+              builder: (context, child) {
+                if (!widget.controller.hasClients ||
+                    widget.controller.position.maxScrollExtent <= 0) {
+                  return const SizedBox.shrink();
                 }
-                final nextThumbLeft = (localDx - (thumbWidth / 2)).clamp(
-                  0.0,
-                  availableTravel,
-                );
-                final nextOffset =
-                    (nextThumbLeft / availableTravel) * maxScrollExtent;
-                controller.jumpTo(nextOffset.clamp(0.0, maxScrollExtent));
-              }
 
-              void dragBy(double deltaDx) {
-                if (!hasClients ||
-                    maxScrollExtent <= 0 ||
-                    availableTravel == 0) {
-                  return;
+                final maxScrollExtent =
+                    widget.controller.position.maxScrollExtent;
+                final trackWidth = math.max(
+                  0.0,
+                  constraints.maxWidth - _handleWidth,
+                );
+                final scrollFraction = maxScrollExtent <= 0 || trackWidth == 0
+                    ? 0.0
+                    : (widget.controller.offset / maxScrollExtent)
+                          .clamp(0.0, 1.0)
+                          .toDouble();
+                final handleLeft = trackWidth * scrollFraction;
+                final markers = _visibleMarkers(
+                  markers: _buildMarkers(maxScrollExtent),
+                  trackWidth: trackWidth,
+                );
+
+                void jumpToTrackPosition(double localDx) {
+                  if (trackWidth == 0) {
+                    return;
+                  }
+                  final nextHandleLeft = (localDx - (_handleWidth / 2))
+                      .clamp(0.0, trackWidth)
+                      .toDouble();
+                  final nextOffset =
+                      (nextHandleLeft / trackWidth) * maxScrollExtent;
+                  widget.controller.jumpTo(
+                    nextOffset.clamp(0.0, maxScrollExtent),
+                  );
                 }
-                final scrollDelta =
-                    deltaDx * (maxScrollExtent / availableTravel);
-                final nextOffset = (controller.offset + scrollDelta).clamp(
-                  0.0,
-                  maxScrollExtent,
-                );
-                controller.jumpTo(nextOffset);
-              }
 
-              return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTapDown: (details) =>
-                    jumpToTrackPosition(details.localPosition.dx),
-                onHorizontalDragUpdate: (details) => dragBy(details.delta.dx),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.45,
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: theme.dividerColor.withValues(alpha: 0.55),
-                    ),
-                  ),
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) =>
+                      jumpToTrackPosition(details.localPosition.dx),
+                  onHorizontalDragStart: (details) {
+                    setState(() => _isDragging = true);
+                    jumpToTrackPosition(details.localPosition.dx);
+                  },
+                  onHorizontalDragUpdate: (details) =>
+                      jumpToTrackPosition(details.localPosition.dx),
+                  onHorizontalDragEnd: (_) =>
+                      setState(() => _isDragging = false),
+                  onHorizontalDragCancel: () =>
+                      setState(() => _isDragging = false),
                   child: Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       Positioned(
-                        left: thumbLeft,
-                        top: 0,
-                        bottom: 0,
-                        child: Container(
-                          width: thumbWidth,
+                        left: _handleWidth / 2,
+                        right: _handleWidth / 2,
+                        top: (_handleHeight - _trackHeight) / 2,
+                        height: _trackHeight,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.9,
-                              ),
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: _isDragging ? 0.28 : 0.16,
                             ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: theme.colorScheme.primary.withValues(
-                                  alpha: 0.28,
-                                ),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
+                            borderRadius: BorderRadius.circular(999),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.keyboard_arrow_left_rounded,
-                                size: 20,
-                                color: theme.colorScheme.onPrimary,
-                              ),
-                              Container(
-                                width: 18,
-                                height: 4,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.onPrimary.withValues(
-                                    alpha: 0.7,
-                                  ),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                              ),
-                              Icon(
-                                Icons.keyboard_arrow_right_rounded,
-                                size: 20,
-                                color: theme.colorScheme.onPrimary,
-                              ),
-                            ],
-                          ),
+                        ),
+                      ),
+                      for (final marker in markers)
+                        _ChartTimelineMarkerLabel(
+                          marker: marker,
+                          trackWidth: trackWidth,
+                          labelWidth: _labelWidth,
+                          isActive:
+                              (marker.fraction - scrollFraction).abs() < 0.04,
+                        ),
+                      Positioned(
+                        left: handleLeft,
+                        top: 0,
+                        child: TimelineSliderHandle(
+                          key: const ValueKey('graphTimelineHandle'),
+                          isDragging: _isDragging,
                         ),
                       ),
                     ],
                   ),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  List<_ChartTimelineMarker> _buildMarkers(double maxScrollExtent) {
+    final startDate = widget.startDate;
+    final endDate = widget.endDate;
+    if (startDate == null || endDate == null || maxScrollExtent <= 0) {
+      return const [];
+    }
+
+    final normalizedStart = _normalizeDate(startDate);
+    final normalizedEnd = _normalizeDate(endDate);
+    final showMonths = _monthSpan(normalizedStart, normalizedEnd) < 24;
+    final markers = <_ChartTimelineMarker>[];
+
+    if (showMonths) {
+      var month = DateTime(normalizedStart.year, normalizedStart.month);
+      while (!month.isAfter(normalizedEnd)) {
+        markers.add(
+          _ChartTimelineMarker(
+            label: _monthFormat.format(month),
+            fraction: _fractionForDate(
+              month,
+              normalizedStart,
+              normalizedEnd,
+              maxScrollExtent,
+            ),
+          ),
+        );
+        month = DateTime(month.year, month.month + 1);
+      }
+      return markers;
+    }
+
+    for (int year = normalizedStart.year; year <= normalizedEnd.year; year++) {
+      final yearStart = DateTime(year);
+      markers.add(
+        _ChartTimelineMarker(
+          label: year.toString(),
+          fraction: _fractionForDate(
+            yearStart,
+            normalizedStart,
+            normalizedEnd,
+            maxScrollExtent,
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
+  List<_ChartTimelineMarker> _visibleMarkers({
+    required List<_ChartTimelineMarker> markers,
+    required double trackWidth,
+  }) {
+    if (markers.length <= 1) {
+      return markers;
+    }
+
+    final minSpacing = _usesMonthMarkers ? 38.0 : 48.0;
+    final visible = <_ChartTimelineMarker>[];
+    double? previousCenter;
+
+    for (final marker in markers) {
+      final center = marker.fraction * trackWidth;
+      if (previousCenter != null && center - previousCenter < minSpacing) {
+        continue;
+      }
+      visible.add(marker);
+      previousCenter = center;
+    }
+
+    return visible;
+  }
+
+  bool get _usesMonthMarkers {
+    final startDate = widget.startDate;
+    final endDate = widget.endDate;
+    if (startDate == null || endDate == null) {
+      return false;
+    }
+    return _monthSpan(_normalizeDate(startDate), _normalizeDate(endDate)) < 24;
+  }
+
+  double _fractionForDate(
+    DateTime date,
+    DateTime start,
+    DateTime end,
+    double maxScrollExtent,
+  ) {
+    final clampedDate = date.isBefore(start)
+        ? start
+        : (date.isAfter(end) ? end : date);
+    final dayOffset = _daysBetween(start, clampedDate);
+    final scrollOffset = math.min(maxScrollExtent, dayOffset * widget.dayWidth);
+    return maxScrollExtent == 0 ? 0 : scrollOffset / maxScrollExtent;
+  }
+
+  DateTime _normalizeDate(DateTime value) {
+    return DateTime(value.year, value.month, value.day);
+  }
+
+  int _daysBetween(DateTime from, DateTime to) {
+    return (to.difference(from).inHours / 24).round();
+  }
+
+  int _monthSpan(DateTime start, DateTime end) {
+    return ((end.year - start.year) * 12) + end.month - start.month;
+  }
+}
+
+class _ChartTimelineMarker {
+  const _ChartTimelineMarker({required this.label, required this.fraction});
+
+  final String label;
+  final double fraction;
+}
+
+class _ChartTimelineMarkerLabel extends StatelessWidget {
+  const _ChartTimelineMarkerLabel({
+    required this.marker,
+    required this.trackWidth,
+    required this.labelWidth,
+    required this.isActive,
+  });
+
+  final _ChartTimelineMarker marker;
+  final double trackWidth;
+  final double labelWidth;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final center = (marker.fraction * trackWidth) + 6;
+    final left = (center - (labelWidth / 2))
+        .clamp(0.0, math.max(0.0, trackWidth + 12 - labelWidth))
+        .toDouble();
+    final color = isActive
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurface.withValues(alpha: 0.62);
+
+    return Positioned(
+      left: left,
+      top: 46,
+      width: labelWidth,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 1,
+            height: 5,
+            margin: const EdgeInsets.only(bottom: 2),
+            color: color.withValues(alpha: isActive ? 0.75 : 0.36),
+          ),
+          Text(
+            marker.label,
+            maxLines: 1,
+            overflow: TextOverflow.visible,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
