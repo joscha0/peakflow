@@ -439,6 +439,9 @@ class _GraphViewState extends ConsumerState<GraphView> {
     return daysBetween(startDate, endDate);
   }
 
+  _MeasurementStats get _selectedRangeStats =>
+      _MeasurementStats.fromPoints(chartPoints);
+
   List<int> get _yAxisValues {
     final values = <int>[];
     for (int value = 0; value <= maxVolume; value += 50) {
@@ -534,6 +537,108 @@ class _GraphViewState extends ConsumerState<GraphView> {
     if (selectedPoint != nearestPoint) {
       setState(() => selectedPoint = nearestPoint);
     }
+  }
+
+  Widget _buildSelectedRangeStats(ThemeData theme) {
+    final stats = _selectedRangeStats;
+    final hasMeasurements = stats.count > 0;
+    final items = [
+      _StatTileData(
+        label: 'Avg',
+        value: hasMeasurements ? stats.average.round().toString() : '-',
+        unit: hasMeasurements ? 'L/min' : null,
+      ),
+      _StatTileData(
+        label: 'Highest',
+        value: hasMeasurements ? stats.highest.toString() : '-',
+        unit: hasMeasurements ? 'L/min' : null,
+      ),
+      _StatTileData(
+        label: 'Lowest',
+        value: hasMeasurements ? stats.lowest.toString() : '-',
+        unit: hasMeasurements ? 'L/min' : null,
+      ),
+      _StatTileData(
+        label: 'Measurements',
+        value: stats.count.toString(),
+        unit: 'times',
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const spacing = 8.0;
+          final columns = constraints.maxWidth >= 620
+              ? 4
+              : constraints.maxWidth >= 280
+              ? 2
+              : 1;
+          final tileWidth =
+              (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: [
+              for (final item in items)
+                SizedBox(width: tileWidth, child: _buildStatTile(theme, item)),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatTile(ThemeData theme, _StatTileData item) {
+    final valueStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w800,
+    );
+    final unitStyle = valueStyle?.copyWith(
+      color: theme.colorScheme.onSurface.withValues(alpha: 0.58),
+      fontWeight: FontWeight.w700,
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            item.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.66),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
+              TextSpan(
+                text: item.value,
+                children: [
+                  if (item.unit != null)
+                    TextSpan(text: ' ${item.unit}', style: unitStyle),
+                ],
+              ),
+              maxLines: 1,
+              style: valueStyle,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildFixedYAxis(ThemeData theme) {
@@ -706,136 +811,144 @@ class _GraphViewState extends ConsumerState<GraphView> {
               child: CircularProgressIndicator(),
             ),
           )
-        : Column(
-            children: [
-              if (entries.isEmpty)
-                const Expanded(
-                  child: Center(child: Text('No data available yet.')),
-                ),
-              if (range != null) _buildRangeControls(theme),
-              if (range != null)
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                      left: 16,
-                      top: 8,
-                      right: 16,
-                      bottom: 12,
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final plotViewportWidth = math.max(
-                          0.0,
-                          constraints.maxWidth - _yAxisWidth - _yAxisGap,
-                        );
-                        final chartHeight = math.max(
-                          0.0,
-                          constraints.maxHeight -
-                              _bottomTitleReservedSize -
-                              _scrollbarThickness -
-                              _scrollbarTopSpacing,
-                        );
-                        final chartAreaHeight = math.max(
-                          0.0,
-                          constraints.maxHeight -
-                              _scrollbarThickness -
-                              _scrollbarTopSpacing,
-                        );
-                        final dayWidth = _resolveDayWidth(plotViewportWidth);
-                        final chartWidth = math.max(
-                          plotViewportWidth,
-                          _chartRightPadding + ((_chartDaySpan + 1) * dayWidth),
-                        );
+        : entries.isEmpty
+        ? const Center(child: Text('No data available yet.'))
+        : SingleChildScrollView(
+            child: Column(
+              children: [
+                if (range != null) _buildRangeControls(theme),
+                if (range != null)
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        left: 16,
+                        top: 8,
+                        right: 16,
+                        bottom: 12,
+                      ),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final plotViewportWidth = math.max(
+                            0.0,
+                            constraints.maxWidth - _yAxisWidth - _yAxisGap,
+                          );
+                          final chartHeight = math.max(
+                            0.0,
+                            constraints.maxHeight -
+                                _bottomTitleReservedSize -
+                                _scrollbarThickness -
+                                _scrollbarTopSpacing,
+                          );
+                          final chartAreaHeight = math.max(
+                            0.0,
+                            constraints.maxHeight -
+                                _scrollbarThickness -
+                                _scrollbarTopSpacing,
+                          );
+                          final dayWidth = _resolveDayWidth(plotViewportWidth);
+                          final chartWidth = math.max(
+                            plotViewportWidth,
+                            _chartRightPadding +
+                                ((_chartDaySpan + 1) * dayWidth),
+                          );
 
-                        return Row(
-                          children: [
-                            SizedBox(
-                              width: _yAxisWidth,
-                              child: _buildFixedYAxis(theme),
-                            ),
-                            const SizedBox(width: _yAxisGap),
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  SizedBox(
-                                    height: chartAreaHeight,
-                                    child: Stack(
-                                      children: [
-                                        RepaintBoundary(
-                                          child: SingleChildScrollView(
-                                            controller: _chartScrollController,
-                                            physics:
-                                                const ClampingScrollPhysics(),
-                                            scrollDirection: Axis.horizontal,
-                                            child: SizedBox(
-                                              width: chartWidth,
-                                              height: chartAreaHeight,
-                                              child: CustomPaint(
-                                                painter: _PeakFlowChartPainter(
-                                                  theme: theme,
-                                                  points: chartPoints,
-                                                  selectedPoint: selectedPoint,
-                                                  startDate: _chartStartDate,
-                                                  daySpan: _chartDaySpan,
-                                                  maxVolume: maxVolume,
-                                                  colorReferenceMaxVolume:
-                                                      effectiveColorReferenceMaxVolume,
-                                                  dayWidth: dayWidth,
-                                                  chartRightPadding:
-                                                      _chartRightPadding,
-                                                  bottomTitleReservedSize:
-                                                      _bottomTitleReservedSize,
-                                                  viewportWidth:
-                                                      plotViewportWidth,
-                                                  scrollController:
-                                                      _chartScrollController,
+                          return Row(
+                            children: [
+                              SizedBox(
+                                width: _yAxisWidth,
+                                child: _buildFixedYAxis(theme),
+                              ),
+                              const SizedBox(width: _yAxisGap),
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      height: chartAreaHeight,
+                                      child: Stack(
+                                        children: [
+                                          RepaintBoundary(
+                                            child: SingleChildScrollView(
+                                              controller:
+                                                  _chartScrollController,
+                                              physics:
+                                                  const ClampingScrollPhysics(),
+                                              scrollDirection: Axis.horizontal,
+                                              child: SizedBox(
+                                                width: chartWidth,
+                                                height: chartAreaHeight,
+                                                child: CustomPaint(
+                                                  painter: _PeakFlowChartPainter(
+                                                    theme: theme,
+                                                    points: chartPoints,
+                                                    selectedPoint:
+                                                        selectedPoint,
+                                                    startDate: _chartStartDate,
+                                                    daySpan: _chartDaySpan,
+                                                    maxVolume: maxVolume,
+                                                    colorReferenceMaxVolume:
+                                                        effectiveColorReferenceMaxVolume,
+                                                    dayWidth: dayWidth,
+                                                    chartRightPadding:
+                                                        _chartRightPadding,
+                                                    bottomTitleReservedSize:
+                                                        _bottomTitleReservedSize,
+                                                    viewportWidth:
+                                                        plotViewportWidth,
+                                                    scrollController:
+                                                        _chartScrollController,
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        Positioned.fill(
-                                          child: GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTapDown: (details) =>
-                                                _selectPointAtPosition(
-                                                  localPosition:
-                                                      details.localPosition,
-                                                  chartHeight: chartHeight,
-                                                  dayWidth: dayWidth,
-                                                ),
-                                            onHorizontalDragUpdate: (details) =>
-                                                _dragChartBy(details.delta.dx),
+                                          Positioned.fill(
+                                            child: GestureDetector(
+                                              behavior: HitTestBehavior.opaque,
+                                              onTapDown: (details) =>
+                                                  _selectPointAtPosition(
+                                                    localPosition:
+                                                        details.localPosition,
+                                                    chartHeight: chartHeight,
+                                                    dayWidth: dayWidth,
+                                                  ),
+                                              onHorizontalDragUpdate:
+                                                  (details) => _dragChartBy(
+                                                    details.delta.dx,
+                                                  ),
+                                            ),
                                           ),
-                                        ),
-                                        _buildTooltipOverlay(
-                                          theme: theme,
-                                          viewportWidth: plotViewportWidth,
-                                          chartHeight: chartHeight,
-                                          dayWidth: dayWidth,
-                                        ),
-                                      ],
+                                          _buildTooltipOverlay(
+                                            theme: theme,
+                                            viewportWidth: plotViewportWidth,
+                                            chartHeight: chartHeight,
+                                            dayWidth: dayWidth,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: _scrollbarTopSpacing),
-                                  _ChartTimelineSlider(
-                                    controller: _chartScrollController,
-                                    thickness: _scrollbarThickness,
-                                    startDate: _chartStartDate,
-                                    endDate: _chartEndDate,
-                                    dayWidth: dayWidth,
-                                  ),
-                                ],
+                                    const SizedBox(
+                                      height: _scrollbarTopSpacing,
+                                    ),
+                                    _ChartTimelineSlider(
+                                      controller: _chartScrollController,
+                                      thickness: _scrollbarThickness,
+                                      startDate: _chartStartDate,
+                                      endDate: _chartEndDate,
+                                      dayWidth: dayWidth,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
-                        );
-                      },
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
-            ],
+                if (range != null) _buildSelectedRangeStats(theme),
+              ],
+            ),
           );
 
     if (!widget.showScaffold) {
@@ -1098,6 +1211,56 @@ class _ChartPoint {
   final int value;
   final DateTime date;
   final String label;
+}
+
+class _MeasurementStats {
+  const _MeasurementStats({
+    required this.count,
+    required this.average,
+    required this.highest,
+    required this.lowest,
+  });
+
+  factory _MeasurementStats.fromPoints(List<_ChartPoint> points) {
+    if (points.isEmpty) {
+      return const _MeasurementStats(
+        count: 0,
+        average: 0,
+        highest: 0,
+        lowest: 0,
+      );
+    }
+
+    var total = 0;
+    var highest = points.first.value;
+    var lowest = points.first.value;
+
+    for (final point in points) {
+      total += point.value;
+      highest = math.max(highest, point.value);
+      lowest = math.min(lowest, point.value);
+    }
+
+    return _MeasurementStats(
+      count: points.length,
+      average: total / points.length,
+      highest: highest,
+      lowest: lowest,
+    );
+  }
+
+  final int count;
+  final double average;
+  final int highest;
+  final int lowest;
+}
+
+class _StatTileData {
+  const _StatTileData({required this.label, required this.value, this.unit});
+
+  final String label;
+  final String value;
+  final String? unit;
 }
 
 class _ChartTimelineSlider extends StatefulWidget {
