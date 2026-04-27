@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/widgets/peak_flow_value_selector.dart';
 
@@ -251,14 +252,14 @@ class _AddViewState extends ConsumerState<AddView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Advanced',
+                        context.l10n.advancedTitle,
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Add date, notes, and symptoms for this day.',
+                        context.l10n.advancedDescription,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(
                             alpha: 0.68,
@@ -311,6 +312,8 @@ class _AddViewState extends ConsumerState<AddView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.92;
@@ -358,7 +361,7 @@ class _AddViewState extends ConsumerState<AddView> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Add Reading',
+                          l10n.addReadingTitle,
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -385,7 +388,7 @@ class _AddViewState extends ConsumerState<AddView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Drag the center line to set the reading or tap the number to type it.',
+                        l10n.addReadingInstruction,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(
                             alpha: 0.72,
@@ -412,7 +415,7 @@ class _AddViewState extends ConsumerState<AddView> {
                       const SizedBox(height: 8),
                       Center(
                         child: Text(
-                          'Maximum reading: $effectiveColorReferenceMaxValue L/min',
+                          l10n.maximumReading(effectiveColorReferenceMaxValue),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(
                               alpha: 0.68,
@@ -430,8 +433,8 @@ class _AddViewState extends ConsumerState<AddView> {
                             _buildSectionDivider(context),
                             _buildSectionLabel(
                               context,
-                              'When',
-                              'Set the date and time for this reading first.',
+                              l10n.whenTitle,
+                              l10n.addWhenDescription,
                             ),
                             LayoutBuilder(
                               builder: (context, constraints) {
@@ -447,9 +450,10 @@ class _AddViewState extends ConsumerState<AddView> {
                                     _buildPickerButton(
                                       context: context,
                                       icon: Icons.calendar_today_outlined,
-                                      label: 'Date',
+                                      label: l10n.dateLabel,
                                       value: DateFormat(
                                         "dd.MM.yyyy",
+                                        localeName,
                                       ).format(date),
                                       width: buttonWidth,
                                       onPressed: () {
@@ -459,7 +463,7 @@ class _AddViewState extends ConsumerState<AddView> {
                                     _buildPickerButton(
                                       context: context,
                                       icon: Icons.access_time_outlined,
-                                      label: 'Time',
+                                      label: l10n.timeLabel,
                                       value: time.format(context),
                                       width: buttonWidth,
                                       onPressed: () {
@@ -473,15 +477,15 @@ class _AddViewState extends ConsumerState<AddView> {
                             _buildSectionDivider(context),
                             _buildSectionLabel(
                               context,
-                              'Notes',
-                              'Add a note for this specific reading.',
+                              l10n.notesTitle,
+                              l10n.readingNotesDescription,
                             ),
                             TextFormField(
                               controller: noteController,
                               maxLines: 3,
                               decoration: InputDecoration(
-                                labelText: "Reading notes",
-                                hintText: "How did the measurement feel?",
+                                labelText: l10n.readingNotesLabel,
+                                hintText: l10n.readingNotesHint,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(18),
                                 ),
@@ -490,8 +494,8 @@ class _AddViewState extends ConsumerState<AddView> {
                             _buildSectionDivider(context),
                             _buildSectionLabel(
                               context,
-                              'Symptoms of the Day',
-                              'Tap every symptom that applies. These day symptoms and notes are shared across all readings for this date.',
+                              l10n.symptomsOfTheDayTitle,
+                              l10n.addSymptomsDescription,
                             ),
                             Wrap(
                               spacing: 10,
@@ -499,7 +503,7 @@ class _AddViewState extends ConsumerState<AddView> {
                               children: [
                                 for (final checkBox in checkboxValues.keys)
                                   FilterChip(
-                                    label: Text(checkBox),
+                                    label: Text(l10n.symptomLabel(checkBox)),
                                     selected: checkboxValues[checkBox] ?? false,
                                     showCheckmark: true,
                                     checkmarkColor: theme.colorScheme.primary,
@@ -538,9 +542,8 @@ class _AddViewState extends ConsumerState<AddView> {
                               controller: noteDayController,
                               maxLines: 3,
                               decoration: InputDecoration(
-                                labelText: "Day notes",
-                                hintText:
-                                    "Weather, medication, exercise, triggers...",
+                                labelText: l10n.dayNotesLabel,
+                                hintText: l10n.dayNotesHint,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(18),
                                 ),
@@ -565,13 +568,13 @@ class _AddViewState extends ConsumerState<AddView> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancel),
                   ),
                   const Spacer(),
                   FilledButton.icon(
                     onPressed: _saveReading,
                     icon: const Icon(Icons.save),
-                    label: const Text('Save'),
+                    label: Text(l10n.save),
                   ),
                 ],
               ),

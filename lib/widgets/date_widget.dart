@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/global/helper.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/views/day_view.dart';
 
@@ -18,6 +19,7 @@ class DateWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = theme.colorScheme.primary;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
 
     return Card(
       child: InkWell(
@@ -41,7 +43,10 @@ class DateWidget extends StatelessWidget {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    DateFormat("EEE").format(dayEntry.date).toUpperCase(),
+                    DateFormat(
+                      "EEE",
+                      localeName,
+                    ).format(dayEntry.date).toUpperCase(),
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
@@ -98,7 +103,7 @@ class DateWidget extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            "No values",
+                            context.l10n.noValues,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: accent,

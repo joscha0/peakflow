@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/helper.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/providers/day_entries_state.dart';
@@ -27,7 +28,7 @@ Future<bool> showDeletionConfirmationDialog({
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -77,10 +78,9 @@ class _DayViewState extends ConsumerState<DayView> {
     if (value == "delete") {
       final confirmed = await showDeletionConfirmationDialog(
         context: context,
-        title: 'Delete day?',
-        message:
-            'This will permanently delete the day and all readings saved for it.',
-        confirmLabel: 'Delete day',
+        title: context.l10n.deleteDayTitle,
+        message: context.l10n.deleteDayMessage,
+        confirmLabel: context.l10n.deleteDayConfirm,
       );
       if (!confirmed || !mounted) {
         return;
@@ -112,9 +112,9 @@ class _DayViewState extends ConsumerState<DayView> {
     if (value == "delete") {
       final confirmed = await showDeletionConfirmationDialog(
         context: context,
-        title: 'Delete reading?',
-        message: 'This will permanently delete this reading.',
-        confirmLabel: 'Delete reading',
+        title: context.l10n.deleteReadingTitle,
+        message: context.l10n.deleteReadingMessage,
+        confirmLabel: context.l10n.deleteReadingConfirm,
       );
       if (!confirmed || !mounted) {
         return;
@@ -147,6 +147,7 @@ class _DayViewState extends ConsumerState<DayView> {
     }
 
     final dayEntry = _currentDayEntry(ref.watch(entryListProvider));
+    final l10n = context.l10n;
     final referenceMaxValue = ref
         .watch(colorReferenceMaxValueProvider)
         .maybeWhen(data: (value) => value, orElse: () => defaultMaxVolume);
@@ -164,17 +165,17 @@ class _DayViewState extends ConsumerState<DayView> {
               return [
                 PopupMenuItem<void>(
                   onTap: () => unawaited(_handleDaySelection("edit", dayEntry)),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [Text("edit"), Icon(Icons.edit)],
+                    children: [Text(l10n.edit), const Icon(Icons.edit)],
                   ),
                 ),
                 PopupMenuItem<void>(
                   onTap: () =>
                       unawaited(_handleDaySelection("delete", dayEntry)),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [Text("delete"), Icon(Icons.delete)],
+                    children: [Text(l10n.delete), const Icon(Icons.delete)],
                   ),
                 ),
               ];
@@ -196,8 +197,8 @@ class _DayViewState extends ConsumerState<DayView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              "Notes",
+                            Text(
+                              l10n.notesTitle,
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,
@@ -216,10 +217,10 @@ class _DayViewState extends ConsumerState<DayView> {
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Row(
-                    children: const [
+                    children: [
                       Text(
-                        "Symptoms",
-                        style: TextStyle(
+                        l10n.symptomsTitle,
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                         ),
@@ -233,7 +234,7 @@ class _DayViewState extends ConsumerState<DayView> {
                     for (String symptom in symptoms) ...[
                       Chip(
                         label: Text(
-                          symptom,
+                          l10n.symptomLabel(symptom),
                           style: const TextStyle(color: Colors.white),
                         ),
                         backgroundColor: Colors.blueAccent.shade700,
@@ -246,10 +247,10 @@ class _DayViewState extends ConsumerState<DayView> {
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Row(
-                  children: const [
+                  children: [
                     Text(
-                      "Readings",
-                      style: TextStyle(
+                      l10n.readingsTitle,
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
                       ),
@@ -314,12 +315,12 @@ class _DayViewState extends ConsumerState<DayView> {
                                                 readingIndex,
                                               ),
                                             ),
-                                      child: const Row(
+                                      child: Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text("edit"),
-                                          Icon(Icons.edit),
+                                          Text(l10n.edit),
+                                          const Icon(Icons.edit),
                                         ],
                                       ),
                                     ),
@@ -333,12 +334,12 @@ class _DayViewState extends ConsumerState<DayView> {
                                                 readingIndex,
                                               ),
                                             ),
-                                      child: const Row(
+                                      child: Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.spaceBetween,
                                         children: [
-                                          Text("delete"),
-                                          Icon(Icons.delete),
+                                          Text(l10n.delete),
+                                          const Icon(Icons.delete),
                                         ],
                                       ),
                                     ),
@@ -354,9 +355,11 @@ class _DayViewState extends ConsumerState<DayView> {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  "Notes: ",
-                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                Text(
+                                  l10n.notesPrefix,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 Expanded(child: Text(reading.note)),
                               ],
@@ -377,7 +380,7 @@ class _DayViewState extends ConsumerState<DayView> {
         onPressed: () async {
           await showAddReadingDrawer(context, date: widget.dayEntry.date);
         },
-        label: const Text("Add reading"),
+        label: Text(l10n.addReadingButton),
         icon: const Icon(Icons.add),
       ),
     );

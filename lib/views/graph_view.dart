@@ -11,6 +11,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/widgets/system_gesture_exclusion_region.dart';
@@ -37,7 +38,6 @@ class _GraphViewState extends ConsumerState<GraphView> {
   static const double _dragScrollMultiplier = 1;
   static const double _minDayWidth = 18;
   static const double _maxDayWidth = 32;
-  static final intl.DateFormat _rangeDateFormat = intl.DateFormat.yMMMMd();
   static final intl.DateFormat _tooltipDateFormat = intl.DateFormat(
     'dd.MM.yyyy',
   );
@@ -55,6 +55,9 @@ class _GraphViewState extends ConsumerState<GraphView> {
   bool isGeneratingCsvReport = false;
 
   final ScrollController _chartScrollController = ScrollController();
+
+  intl.DateFormat get _rangeDateFormat =>
+      intl.DateFormat.yMMMMd(Localizations.localeOf(context).toLanguageTag());
 
   @override
   void initState() {
@@ -354,6 +357,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
     if (activeRange == null) {
       return const SizedBox.shrink();
     }
+    final l10n = context.l10n;
 
     return SizedBox(
       width: double.infinity,
@@ -363,7 +367,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Date Range',
+              l10n.dateRangeTitle,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -382,12 +386,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
               runSpacing: 8,
               children: [
                 _buildRangePresetChip(
-                  label: 'All',
+                  label: l10n.rangeAll,
                   selected: selectedRangePreset == _GraphRangePreset.all,
                   onSelected: _selectAllRange,
                 ),
                 _buildRangePresetChip(
-                  label: 'Last 3 Months',
+                  label: l10n.rangeLast3Months,
                   selected:
                       selectedRangePreset == _GraphRangePreset.last3Months,
                   onSelected: () => _selectTrailingMonths(3),
@@ -396,7 +400,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                 OutlinedButton.icon(
                   onPressed: _pickCustomRange,
                   icon: const Icon(Icons.date_range_rounded, size: 18),
-                  label: const Text('Custom'),
+                  label: Text(l10n.rangeCustom),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: theme.colorScheme.onSurface,
                     backgroundColor:
@@ -531,7 +535,9 @@ class _GraphViewState extends ConsumerState<GraphView> {
   List<List<String>> _dayEntryToCsvRows(DayEntry entry) {
     final rows = <List<String>>[];
     final date = entry.date.toIso8601String().split('T').first;
-    final symptoms = _symptomsForEntry(entry).join(', ');
+    final symptoms = _symptomsForEntry(
+      entry,
+    ).map(context.l10n.symptomLabel).join(', ');
     final sortedReadings = [...entry.readings]
       ..sort((first, second) {
         final firstMinutes = (first.time.hour * 60) + first.time.minute;
@@ -555,7 +561,14 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
   String _buildSelectedRangeCsv() {
     final rows = <List<String>>[
-      ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
+      [
+        context.l10n.dateLabel,
+        context.l10n.timeLabel,
+        context.l10n.reportValue,
+        context.l10n.reportReadingNote,
+        context.l10n.dayNotesLabel,
+        context.l10n.symptomsTitle,
+      ],
     ];
 
     for (final entry in entriesFiltered) {
@@ -574,16 +587,20 @@ class _GraphViewState extends ConsumerState<GraphView> {
       isGeneratingPdfReport = true;
     });
 
+    final l10n = context.l10n;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
     try {
       final report = _PeakFlowPdfReport(
         rangeLabel: _activeRangeLabel,
         days: _selectedRangeReportDays(),
         maxVolume: maxVolume,
         referenceMaxVolume: effectiveColorReferenceMaxVolume,
+        l10n: l10n,
+        localeName: localeName,
       );
       final bytes = await report.build();
       final outputPath = await FilePicker.saveFile(
-        dialogTitle: 'Save PDF Report',
+        dialogTitle: l10n.savePdfReportDialogTitle,
         fileName: _reportFileName(),
         type: FileType.custom,
         allowedExtensions: const ['pdf'],
@@ -596,12 +613,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
       if (outputPath != null || kIsWeb) {
         _showReportMessage(
-          kIsWeb ? 'PDF report download started.' : 'PDF report saved.',
+          kIsWeb ? l10n.pdfReportDownloadStarted : l10n.pdfReportSaved,
         );
       }
     } catch (_) {
       if (mounted) {
-        _showReportMessage('Could not generate the PDF report.');
+        _showReportMessage(l10n.pdfReportGenerateFailed);
       }
     } finally {
       if (mounted) {
@@ -621,10 +638,11 @@ class _GraphViewState extends ConsumerState<GraphView> {
       isGeneratingCsvReport = true;
     });
 
+    final l10n = context.l10n;
     try {
       final csv = _buildSelectedRangeCsv();
       final outputPath = await FilePicker.saveFile(
-        dialogTitle: 'Save CSV Report',
+        dialogTitle: l10n.saveCsvReportDialogTitle,
         fileName: _csvReportFileName(),
         type: FileType.custom,
         allowedExtensions: const ['csv'],
@@ -637,12 +655,12 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
       if (outputPath != null || kIsWeb) {
         _showReportMessage(
-          kIsWeb ? 'CSV report download started.' : 'CSV report saved.',
+          kIsWeb ? l10n.csvReportDownloadStarted : l10n.csvReportSaved,
         );
       }
     } catch (_) {
       if (mounted) {
-        _showReportMessage('Could not generate the CSV report.');
+        _showReportMessage(l10n.csvReportGenerateFailed);
       }
     } finally {
       if (mounted) {
@@ -752,27 +770,28 @@ class _GraphViewState extends ConsumerState<GraphView> {
 
   Widget _buildSelectedRangeStats(ThemeData theme) {
     final stats = _selectedRangeStats;
+    final l10n = context.l10n;
     final hasMeasurements = stats.count > 0;
     final items = [
       _StatTileData(
-        label: 'Avg',
+        label: l10n.statAverage,
         value: hasMeasurements ? stats.average.round().toString() : '-',
         unit: hasMeasurements ? 'L/min' : null,
       ),
       _StatTileData(
-        label: 'Highest',
+        label: l10n.statHighest,
         value: hasMeasurements ? stats.highest.toString() : '-',
         unit: hasMeasurements ? 'L/min' : null,
       ),
       _StatTileData(
-        label: 'Lowest',
+        label: l10n.statLowest,
         value: hasMeasurements ? stats.lowest.toString() : '-',
         unit: hasMeasurements ? 'L/min' : null,
       ),
       _StatTileData(
-        label: 'Measurements',
+        label: l10n.statMeasurements,
         value: stats.count.toString(),
-        unit: 'times',
+        unit: l10n.timesUnit,
       ),
     ];
 
@@ -806,20 +825,21 @@ class _GraphViewState extends ConsumerState<GraphView> {
     ThemeData theme,
     int effectiveColorReferenceMaxVolume,
   ) {
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Reports',
+            l10n.reportsTitle,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            'Export Report for $_activeRangeLabel',
+            l10n.exportReportFor(_activeRangeLabel),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.64),
             ),
@@ -844,7 +864,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                       )
                     : const Icon(Icons.picture_as_pdf_rounded),
                 label: Text(
-                  isGeneratingPdfReport ? 'Generating PDF' : 'PDF Report',
+                  isGeneratingPdfReport ? l10n.generatingPdf : l10n.pdfReport,
                 ),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
@@ -871,7 +891,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                       )
                     : const Icon(Icons.table_chart_outlined),
                 label: Text(
-                  isGeneratingCsvReport ? 'Generating CSV' : 'CSV Report',
+                  isGeneratingCsvReport ? l10n.generatingCsv : l10n.csvReport,
                 ),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(
@@ -1127,7 +1147,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
             ),
           )
         : entries.isEmpty
-        ? const Center(child: Text('No data available yet.'))
+        ? Center(child: Text(context.l10n.noDataAvailable))
         : range == null
         ? const SizedBox.shrink()
         : Column(
@@ -1220,6 +1240,19 @@ class _GraphViewState extends ConsumerState<GraphView> {
                                                             plotViewportWidth,
                                                         scrollController:
                                                             _chartScrollController,
+                                                        stableLabel: context
+                                                            .l10n
+                                                            .zoneStable,
+                                                        cautionLabel: context
+                                                            .l10n
+                                                            .zoneCaution,
+                                                        actionNeededLabel: context
+                                                            .l10n
+                                                            .zoneActionNeeded,
+                                                        localeName:
+                                                            Localizations.localeOf(
+                                                              context,
+                                                            ).toLanguageTag(),
                                                       ),
                                                     ),
                                                   ),
@@ -1289,7 +1322,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Data')),
+      appBar: AppBar(title: Text(context.l10n.dataScreenTitle)),
       body: body,
     );
   }
@@ -1446,14 +1479,14 @@ class _CustomRangeSheetState extends State<_CustomRangeSheet> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Custom Range',
+                          context.l10n.customRangeTitle,
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Choose start and end dates for the chart.',
+                          context.l10n.customRangeDescription,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurface.withValues(
                               alpha: 0.7,
@@ -1474,7 +1507,7 @@ class _CustomRangeSheetState extends State<_CustomRangeSheet> {
                 children: [
                   _buildBoundaryButton(
                     theme: theme,
-                    label: 'Start',
+                    label: context.l10n.startLabel,
                     value: start,
                     selected: isEditingStart,
                     onTap: () => _selectBoundary(true),
@@ -1482,7 +1515,7 @@ class _CustomRangeSheetState extends State<_CustomRangeSheet> {
                   const SizedBox(width: 10),
                   _buildBoundaryButton(
                     theme: theme,
-                    label: 'End',
+                    label: context.l10n.endLabel,
                     value: end,
                     selected: !isEditingStart,
                     onTap: () => _selectBoundary(false),
@@ -1511,7 +1544,7 @@ class _CustomRangeSheetState extends State<_CustomRangeSheet> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(context.l10n.cancel),
                   ),
                   const Spacer(),
                   FilledButton(
@@ -1520,7 +1553,7 @@ class _CustomRangeSheetState extends State<_CustomRangeSheet> {
                         context,
                       ).pop(DateTimeRange(start: start, end: end));
                     },
-                    child: const Text('Apply'),
+                    child: Text(context.l10n.apply),
                   ),
                 ],
               ),
@@ -1605,20 +1638,24 @@ class _PeakFlowPdfReport {
     required this.days,
     required this.maxVolume,
     required this.referenceMaxVolume,
+    required this.l10n,
+    required this.localeName,
   });
-
-  static final intl.DateFormat _dateFormat = intl.DateFormat.yMMMd();
-  static final intl.DateFormat _dateTimeFormat = intl.DateFormat.yMMMd()
-      .add_Hm();
-  static final intl.DateFormat _timeFormat = intl.DateFormat.Hm();
-  static final intl.DateFormat _generatedFormat = intl.DateFormat.yMMMd()
-      .add_Hm();
-  static final intl.DateFormat _monthFormat = intl.DateFormat.yMMMM();
 
   final String rangeLabel;
   final List<_ReportDay> days;
   final int maxVolume;
   final int referenceMaxVolume;
+  final AppLocalizations l10n;
+  final String localeName;
+
+  intl.DateFormat get _dateFormat => intl.DateFormat.yMMMd(localeName);
+  intl.DateFormat get _dateTimeFormat =>
+      intl.DateFormat.yMMMd(localeName).add_Hm();
+  intl.DateFormat get _timeFormat => intl.DateFormat.Hm(localeName);
+  intl.DateFormat get _generatedFormat =>
+      intl.DateFormat.yMMMd(localeName).add_Hm();
+  intl.DateFormat get _monthFormat => intl.DateFormat.yMMMM(localeName);
 
   List<_ReportReading> get readings => [
     for (final day in days) ...day.readings,
@@ -1637,41 +1674,46 @@ class _PeakFlowPdfReport {
         footer: (context) => pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text(
-            'Page ${context.pageNumber} of ${context.pagesCount}',
+            l10n.reportPageOf(context.pageNumber, context.pagesCount),
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
         ),
         build: (context) => [
           pw.Text(
-            'Peak Flow Report',
+            l10n.peakFlowReportTitle,
             style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 6),
-          pw.Text('Range: $rangeLabel'),
-          pw.Text('Generated: ${_generatedFormat.format(DateTime.now())}'),
+          pw.Text(l10n.reportRange(rangeLabel)),
+          pw.Text(
+            l10n.reportGenerated(_generatedFormat.format(DateTime.now())),
+          ),
           pw.SizedBox(height: 16),
-          _sectionTitle('Stats'),
+          _sectionTitle(l10n.reportStats),
           _keyValueGrid([
             (
-              'Average',
+              l10n.reportAverage,
               stats.count == 0 ? '-' : '${stats.average.round()} L/min',
             ),
-            ('Highest', stats.count == 0 ? '-' : '${stats.highest} L/min'),
-            ('Lowest', stats.count == 0 ? '-' : '${stats.lowest} L/min'),
-            ('Readings', stats.count.toString()),
+            (
+              l10n.statHighest,
+              stats.count == 0 ? '-' : '${stats.highest} L/min',
+            ),
+            (l10n.statLowest, stats.count == 0 ? '-' : '${stats.lowest} L/min'),
+            (l10n.readingsTitle, stats.count.toString()),
           ]),
           pw.SizedBox(height: 12),
-          _sectionTitle('Readings By Zone'),
+          _sectionTitle(l10n.reportReadingsByZone),
           _keyValueGrid([
-            ('Stable', zoneTotals.stable.toString()),
-            ('Caution', zoneTotals.caution.toString()),
-            ('Action Needed', zoneTotals.actionNeeded.toString()),
-            ('Reference Max', '$referenceMaxVolume L/min'),
+            (l10n.zoneStable, zoneTotals.stable.toString()),
+            (l10n.zoneCaution, zoneTotals.caution.toString()),
+            (l10n.zoneActionNeeded, zoneTotals.actionNeeded.toString()),
+            (l10n.reportReferenceMax, '$referenceMaxVolume L/min'),
           ]),
           pw.SizedBox(height: 10),
-          _sectionTitle('Action Needed Dates'),
+          _sectionTitle(l10n.reportActionNeededDates),
           if (zoneTotals.actionNeededReadings.isEmpty)
-            pw.Text('No readings were in the action needed zone.')
+            pw.Text(l10n.reportNoActionNeeded)
           else
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1684,7 +1726,7 @@ class _PeakFlowPdfReport {
             ),
           pw.SizedBox(height: 18),
           if (months.isEmpty)
-            pw.Text('No saved readings in this date range.')
+            pw.Text(l10n.reportNoSavedReadingsRange)
           else
             for (final month in months) ..._buildMonthSection(month),
         ],
@@ -1779,11 +1821,11 @@ class _PeakFlowPdfReport {
   String _zoneLabel(int value) {
     switch (_zoneForValue(value)) {
       case _PeakFlowZone.stable:
-        return 'Stable';
+        return l10n.zoneStable;
       case _PeakFlowZone.caution:
-        return 'Caution';
+        return l10n.zoneCaution;
       case _PeakFlowZone.actionNeeded:
-        return 'Action Needed';
+        return l10n.zoneActionNeeded;
     }
   }
 
@@ -1799,7 +1841,7 @@ class _PeakFlowPdfReport {
       _buildMonthGraph(month),
       pw.SizedBox(height: 12),
       if (monthReadings.isEmpty)
-        pw.Text('No readings saved this month.')
+        pw.Text(l10n.reportNoSavedReadingsMonth)
       else
         for (final day in month.days) _buildDayDetails(day),
       pw.SizedBox(height: 12),
@@ -1809,7 +1851,7 @@ class _PeakFlowPdfReport {
   pw.Widget _buildMonthGraph(_ReportMonth month) {
     final monthReadings = month.readings;
     if (monthReadings.isEmpty) {
-      return _emptyGraphBox('No readings to graph for this month.');
+      return _emptyGraphBox(l10n.reportNoGraphReadingsMonth);
     }
 
     final daysInMonth = DateTime(
@@ -1903,7 +1945,7 @@ class _PeakFlowPdfReport {
         ),
         pw.SizedBox(height: 4),
         pw.Text(
-          'X axis: day of month. Background bands match the app zones.',
+          l10n.reportXAxisDescription,
           style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
         ),
       ],
@@ -1942,17 +1984,21 @@ class _PeakFlowPdfReport {
           ),
           pw.SizedBox(height: 4),
           pw.Text(
-            'Day note: ${day.note.trim().isEmpty ? '-' : day.note.trim()}',
+            l10n.reportDayNote(day.note.trim().isEmpty ? '-' : day.note.trim()),
             style: const pw.TextStyle(fontSize: 9),
           ),
           pw.Text(
-            'Symptoms: ${day.symptoms.isEmpty ? '-' : day.symptoms.join(', ')}',
+            l10n.reportSymptoms(
+              day.symptoms.isEmpty
+                  ? '-'
+                  : day.symptoms.map(l10n.symptomLabel).join(', '),
+            ),
             style: const pw.TextStyle(fontSize: 9),
           ),
           pw.SizedBox(height: 6),
           if (day.readings.isEmpty)
             pw.Text(
-              'No readings saved for this day.',
+              l10n.reportNoReadingsDay,
               style: const pw.TextStyle(fontSize: 9),
             )
           else
@@ -1969,7 +2015,12 @@ class _PeakFlowPdfReport {
                 2: pw.FixedColumnWidth(82),
                 3: pw.FlexColumnWidth(),
               },
-              headers: const ['Time', 'Value', 'Zone', 'Reading note'],
+              headers: [
+                l10n.reportTime,
+                l10n.reportValue,
+                l10n.reportZone,
+                l10n.reportReadingNote,
+              ],
               data: [
                 for (final reading in day.readings)
                   [
@@ -2184,13 +2235,12 @@ class _ChartTimelineSliderState extends State<_ChartTimelineSlider> {
   static const double _handleHeight = 44;
   static const double _trackHeight = 2;
   static const double _labelWidth = 48;
-  static final intl.DateFormat _monthFormat = intl.DateFormat.MMM();
-
   bool _isDragging = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final localeName = Localizations.localeOf(context).toLanguageTag();
 
     return SystemGestureExclusionRegion(
       child: SizedBox(
@@ -2218,7 +2268,7 @@ class _ChartTimelineSliderState extends State<_ChartTimelineSlider> {
                           .toDouble();
                 final handleLeft = trackWidth * scrollFraction;
                 final markers = _visibleMarkers(
-                  markers: _buildMarkers(maxScrollExtent),
+                  markers: _buildMarkers(maxScrollExtent, localeName),
                   trackWidth: trackWidth,
                 );
 
@@ -2295,7 +2345,10 @@ class _ChartTimelineSliderState extends State<_ChartTimelineSlider> {
     );
   }
 
-  List<_ChartTimelineMarker> _buildMarkers(double maxScrollExtent) {
+  List<_ChartTimelineMarker> _buildMarkers(
+    double maxScrollExtent,
+    String localeName,
+  ) {
     final startDate = widget.startDate;
     final endDate = widget.endDate;
     if (startDate == null || endDate == null || maxScrollExtent <= 0) {
@@ -2312,7 +2365,7 @@ class _ChartTimelineSliderState extends State<_ChartTimelineSlider> {
       while (!month.isAfter(normalizedEnd)) {
         markers.add(
           _ChartTimelineMarker(
-            label: _monthFormat.format(month),
+            label: intl.DateFormat.MMM(localeName).format(month),
             fraction: _fractionForDate(
               month,
               normalizedStart,
@@ -2478,11 +2531,11 @@ class _PeakFlowChartPainter extends CustomPainter {
     required this.bottomTitleReservedSize,
     required this.viewportWidth,
     required this.scrollController,
+    required this.stableLabel,
+    required this.cautionLabel,
+    required this.actionNeededLabel,
+    required this.localeName,
   }) : super(repaint: scrollController);
-
-  static final intl.DateFormat _monthLabelDateFormat = intl.DateFormat(
-    'MMM yyyy',
-  );
 
   final ThemeData theme;
   final List<_ChartPoint> points;
@@ -2496,6 +2549,10 @@ class _PeakFlowChartPainter extends CustomPainter {
   final double bottomTitleReservedSize;
   final double viewportWidth;
   final ScrollController scrollController;
+  final String stableLabel;
+  final String cautionLabel;
+  final String actionNeededLabel;
+  final String localeName;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2575,7 +2632,11 @@ class _PeakFlowChartPainter extends CustomPainter {
         oldDelegate.chartRightPadding != chartRightPadding ||
         oldDelegate.bottomTitleReservedSize != bottomTitleReservedSize ||
         oldDelegate.viewportWidth != viewportWidth ||
-        oldDelegate.scrollController != scrollController;
+        oldDelegate.scrollController != scrollController ||
+        oldDelegate.stableLabel != stableLabel ||
+        oldDelegate.cautionLabel != cautionLabel ||
+        oldDelegate.actionNeededLabel != actionNeededLabel ||
+        oldDelegate.localeName != localeName;
   }
 
   void _paintZones({
@@ -2638,7 +2699,7 @@ class _PeakFlowChartPainter extends CustomPainter {
 
     _paintZoneLabel(
       canvas: canvas,
-      label: 'Stable',
+      label: stableLabel,
       color: const Color(0xFF43A047),
       top: _yForValue(safeReferenceMax.toDouble(), plotHeight),
       bottom: _yForValue(orangeLimit.toDouble(), plotHeight),
@@ -2647,7 +2708,7 @@ class _PeakFlowChartPainter extends CustomPainter {
     );
     _paintZoneLabel(
       canvas: canvas,
-      label: 'Caution',
+      label: cautionLabel,
       color: const Color(0xFFFFB300),
       top: _yForValue(orangeLimit.toDouble(), plotHeight),
       bottom: _yForValue(redLimit.toDouble(), plotHeight),
@@ -2656,7 +2717,7 @@ class _PeakFlowChartPainter extends CustomPainter {
     );
     _paintZoneLabel(
       canvas: canvas,
-      label: 'Action Needed',
+      label: actionNeededLabel,
       color: const Color(0xFFE53935),
       top: _yForValue(redLimit.toDouble(), plotHeight),
       bottom: plotHeight,
@@ -3096,7 +3157,7 @@ class _PeakFlowChartPainter extends CustomPainter {
 
     final textPainter = TextPainter(
       text: TextSpan(
-        text: _monthLabelDateFormat.format(monthDate),
+        text: intl.DateFormat('MMM yyyy', localeName).format(monthDate),
         style: labelStyle,
       ),
       textDirection: TextDirection.ltr,

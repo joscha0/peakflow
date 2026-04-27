@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/day_view.dart';
@@ -97,10 +98,15 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateText = DateFormat("dd.MM.yyyy").format(widget.dayEntry.date);
+    final l10n = context.l10n;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
+    final dateText = DateFormat(
+      "dd.MM.yyyy",
+      localeName,
+    ).format(widget.dayEntry.date);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Edit day"), centerTitle: true),
+      appBar: AppBar(title: Text(l10n.editDayTitle), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 110),
@@ -108,7 +114,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Update the shared day context for $dateText.',
+                l10n.editDayIntro(dateText),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
                   height: 1.35,
@@ -117,8 +123,8 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
               const SizedBox(height: 24),
               _buildSectionLabel(
                 context,
-                'Symptoms of the Day',
-                'These symptoms are shared across all readings saved on $dateText.',
+                l10n.symptomsOfTheDayTitle,
+                l10n.editDaySymptomsDescription(dateText),
               ),
               Wrap(
                 spacing: 10,
@@ -126,7 +132,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
                 children: [
                   for (final checkBox in checkboxValues.keys)
                     FilterChip(
-                      label: Text(checkBox),
+                      label: Text(l10n.symptomLabel(checkBox)),
                       selected: checkboxValues[checkBox] ?? false,
                       showCheckmark: true,
                       checkmarkColor: theme.colorScheme.primary,
@@ -157,15 +163,15 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
               _buildSectionDivider(context),
               _buildSectionLabel(
                 context,
-                'Day Notes',
-                'This note is also shared across every reading for this date.',
+                l10n.dayNotesTitle,
+                l10n.editDayNotesDescription,
               ),
               TextFormField(
                 controller: noteDayController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: "Day notes",
-                  hintText: "Weather, medication, exercise, triggers...",
+                  labelText: l10n.dayNotesLabel,
+                  hintText: l10n.dayNotesHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
@@ -197,7 +203,7 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
             ),
           );
         },
-        label: const Text("SAVE"),
+        label: Text(l10n.saveUpper),
         icon: const Icon(Icons.save),
       ),
     );

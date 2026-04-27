@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/add_view.dart';
 import 'package:peakflow/views/graph_view.dart';
@@ -249,6 +250,7 @@ class _TimelinePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final localeName = Localizations.localeOf(context).toLanguageTag();
     return Stack(
       children: [
         CustomScrollView(
@@ -267,9 +269,9 @@ class _TimelinePage extends StatelessWidget {
                 ),
               )
             else if (entries.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(child: Text('No data available yet.')),
+                child: Center(child: Text(context.l10n.noDataAvailable)),
               )
             else ...[
               for (
@@ -301,6 +303,7 @@ class _TimelinePage extends StatelessWidget {
                               child: _SectionTitle(
                                 title: DateFormat(
                                   "MMMM",
+                                  localeName,
                                 ).format(monthSection.month),
                                 fontSize: 18,
                                 topPadding: 8,
@@ -472,7 +475,7 @@ class _FloatingPageNavItems extends StatelessWidget {
         _FloatingPageNavItem(
           width: _FloatingPageNav._itemWidth,
           icon: Icons.calendar_today_outlined,
-          label: 'Timeline',
+          label: context.l10n.timelineTab,
           foreground: foreground,
           isSelected: selectedPageIndex == 0,
           onTap: () => onSelected(_HomePage.timeline),
@@ -480,7 +483,7 @@ class _FloatingPageNavItems extends StatelessWidget {
         _FloatingPageNavItem(
           width: _FloatingPageNav._itemWidth,
           icon: Icons.show_chart,
-          label: 'Graph',
+          label: context.l10n.graphTab,
           foreground: foreground,
           isSelected: selectedPageIndex == 1,
           onTap: () => onSelected(_HomePage.graph),
@@ -859,10 +862,9 @@ class _TimelineHandlePosition extends StatelessWidget {
     required this.rightInset,
   });
 
-  static final DateFormat _monthYearFormat = DateFormat('MMM yyyy');
-
   @override
   Widget build(BuildContext context) {
+    final localeName = Localizations.localeOf(context).toLanguageTag();
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
@@ -889,7 +891,10 @@ class _TimelineHandlePosition extends StatelessWidget {
                 duration: const Duration(milliseconds: 120),
                 child: TimelineSliderPill(
                   key: const ValueKey('homeTimelineMonthLabel'),
-                  label: _monthYearFormat.format(currentMonth.date),
+                  label: DateFormat(
+                    'MMM yyyy',
+                    localeName,
+                  ).format(currentMonth.date),
                 ),
               ),
               const SizedBox(width: 8),
@@ -1031,6 +1036,7 @@ class _GapIndicatorTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final isSingleDayGap = gapDays == 1;
     final indicatorColor = theme.brightness == Brightness.light
         ? Colors.black
@@ -1067,14 +1073,14 @@ class _GapIndicatorTile extends StatelessWidget {
             ),
           const SizedBox(height: 8),
           Text(
-            isSingleDayGap ? "1 day" : "$gapDays days",
+            isSingleDayGap ? l10n.gapOneDay : l10n.gapDays(gapDays),
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
             textAlign: TextAlign.center,
           ),
           Text(
-            isSingleDayGap ? "between" : "missing",
+            isSingleDayGap ? l10n.gapBetween : l10n.gapMissing,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurface.withValues(alpha: 0.65),
             ),

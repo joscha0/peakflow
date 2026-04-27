@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:peakflow/db/prefs.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
@@ -135,7 +136,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Time',
+                    context.l10n.timeLabel,
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
@@ -159,7 +160,12 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateText = DateFormat("dd.MM.yyyy").format(widget.dayEntry.date);
+    final l10n = context.l10n;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
+    final dateText = DateFormat(
+      "dd.MM.yyyy",
+      localeName,
+    ).format(widget.dayEntry.date);
     final effectiveColorReferenceMaxValue = ref
         .watch(colorReferenceMaxValueProvider)
         .maybeWhen(
@@ -168,7 +174,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Edit reading"), centerTitle: true),
+      appBar: AppBar(title: Text(l10n.editReadingTitle), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           physics: isDraggingSelector
@@ -179,7 +185,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Update the reading details for $dateText.',
+                l10n.editReadingIntro(dateText),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
                   height: 1.35,
@@ -188,15 +194,15 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               const SizedBox(height: 24),
               _buildSectionLabel(
                 context,
-                'When',
-                'This reading belongs to $dateText. You can adjust the time here.',
+                l10n.whenTitle,
+                l10n.editReadingWhenDescription(dateText),
               ),
               _buildTimeButton(context),
               _buildSectionDivider(context),
               _buildSectionLabel(
                 context,
-                'Peak Flow Value',
-                'Drag the center line to update the reading or type the value directly.',
+                l10n.peakFlowValueTitle,
+                l10n.editReadingValueDescription,
               ),
               const SizedBox(height: 8),
               PeakFlowValueSelector(
@@ -218,7 +224,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Maximum reading: $effectiveColorReferenceMaxValue L/min',
+                  l10n.maximumReading(effectiveColorReferenceMaxValue),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.68),
                   ),
@@ -227,15 +233,15 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               _buildSectionDivider(context),
               _buildSectionLabel(
                 context,
-                'Notes',
-                'Adjust the note for this individual reading.',
+                l10n.notesTitle,
+                l10n.readingNotesDescription,
               ),
               TextFormField(
                 controller: noteController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  labelText: "Reading notes",
-                  hintText: "How did the measurement feel?",
+                  labelText: l10n.readingNotesLabel,
+                  hintText: l10n.readingNotesHint,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
                   ),
@@ -272,7 +278,7 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
             ),
           );
         },
-        label: const Text("SAVE"),
+        label: Text(l10n.saveUpper),
         icon: const Icon(Icons.save),
       ),
     );

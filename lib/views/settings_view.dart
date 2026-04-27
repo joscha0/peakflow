@@ -8,7 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/debug/mock_data.dart';
 import 'package:peakflow/global/consts.dart';
+import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
+import 'package:peakflow/providers/locale_provider.dart';
+import 'package:peakflow/providers/locale_state.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/services/notification_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +47,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   int notificationMinute = 0;
   int recordedBestValue = 0;
   Color selectedPrimaryColor = defaultAccent;
+  AppLocaleChoice localeChoice = AppLocaleChoice.english;
 
   @override
   void initState() {
@@ -85,14 +89,18 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       selectedPrimaryColor = _resolvePrimaryColor(
         prefs.getInt(primaryColorPreferenceKey) ?? defaultAccent.toARGB32(),
       );
+      localeChoice = AppLocaleChoice.fromPreferenceValue(
+        prefs.getString(localePreferenceKey) ??
+            ref.read(localeStateNotifier).choice.preferenceValue,
+      );
       useAutomaticMaxValue = prefs.getBool(useAutomaticMaxValueKey) ?? true;
       recordedBestValue = prefs.getInt(bestValueKey) ?? 0;
       titleController.text =
           prefs.getString("notificationTitle") ??
-          _notificationService.defaultTitle;
+          context.l10n.notificationDefaultTitle;
       bodyController.text =
           prefs.getString("notificationBody") ??
-          _notificationService.defaultBody;
+          context.l10n.notificationDefaultBody;
       notificationHour = prefs.getInt('notificationHour') ?? 0;
       notificationMinute = prefs.getInt('notificationMinute') ?? 0;
       hasNotifications = notificationsEnabled;
@@ -157,6 +165,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     required Uint8List bytes,
     required String successMessage,
   }) async {
+    final webSuccessMessage = context.l10n.exportDownloadStarted;
     final outputPath = await FilePicker.saveFile(
       dialogTitle: dialogTitle,
       fileName: fileName,
@@ -170,9 +179,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     }
 
     if (outputPath != null || kIsWeb) {
-      _showNotificationMessage(
-        kIsWeb ? 'Export download started.' : successMessage,
-      );
+      _showNotificationMessage(kIsWeb ? webSuccessMessage : successMessage);
     }
   }
 
@@ -185,14 +192,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       isDataTransferInProgress = true;
     });
 
+    final dialogTitle = context.l10n.exportJsonBackupDialogTitle;
+    final successMessage = context.l10n.jsonBackupSaved;
     try {
       final json = await exportDayEntriesJson();
       await _saveExportFile(
-        dialogTitle: 'Export JSON backup',
+        dialogTitle: dialogTitle,
         fileName: 'peakflow-backup.json',
         extension: 'json',
         bytes: Uint8List.fromList(utf8.encode(json)),
-        successMessage: 'JSON backup saved.',
+        successMessage: successMessage,
       );
     } finally {
       if (mounted) {
@@ -208,6 +217,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       return;
     }
 
+    final l10n = context.l10n;
     final result = await FilePicker.pickFiles(
       allowMultiple: false,
       type: FileType.custom,
@@ -223,7 +233,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         ? await selectedFile.xFile.readAsString()
         : utf8.decode(selectedFile.bytes!);
     if (jsonData.trim().isEmpty || !mounted) {
-      _showNotificationMessage('That JSON file is empty.');
+      _showNotificationMessage(l10n.jsonFileEmpty);
       return;
     }
 
@@ -231,12 +241,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     try {
       preview = await previewDayEntriesJsonImport(jsonData);
     } on FormatException {
-      _showNotificationMessage(
-        'That JSON file is not a valid Peak Flow backup.',
-      );
+      _showNotificationMessage(l10n.jsonFileInvalid);
       return;
     } catch (_) {
-      _showNotificationMessage('Could not read that JSON file.');
+      _showNotificationMessage(l10n.jsonFileReadFailed);
       return;
     }
 
@@ -260,18 +268,16 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
     try {
       final message = action == _JsonImportAction.merge
-          ? await _mergeJsonBackup(jsonData)
-          : await _replaceJsonBackup(jsonData);
+          ? await _mergeJsonBackup(jsonData, l10n)
+          : await _replaceJsonBackup(jsonData, l10n);
       await ref.read(entryListProvider.notifier).loadEntries();
       ref.invalidate(colorReferenceMaxValueProvider);
       await loadSettings();
       _showNotificationMessage(message);
     } on FormatException {
-      _showNotificationMessage(
-        'That JSON file is not a valid Peak Flow backup.',
-      );
+      _showNotificationMessage(l10n.jsonFileInvalid);
     } catch (_) {
-      _showNotificationMessage('Could not import that JSON file.');
+      _showNotificationMessage(l10n.jsonFileImportFailed);
     } finally {
       if (mounted) {
         setState(() {
@@ -281,48 +287,58 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     }
   }
 
-  Future<String> _mergeJsonBackup(String jsonData) async {
+  Future<String> _mergeJsonBackup(
+    String jsonData,
+    AppLocalizations l10n,
+  ) async {
     final result = await mergeDayEntriesJson(jsonData);
     if (result.daysChangedByMerge == 0 && result.newReadings == 0) {
-      return 'Backup merged. No new data was found.';
+      return l10n.backupMergedNoNewData;
     }
 
-    return 'Merged ${result.daysChangedByMerge} days and added ${result.newReadings} readings.';
+    return l10n.backupMerged(result.daysChangedByMerge, result.newReadings);
   }
 
-  Future<String> _replaceJsonBackup(String jsonData) async {
+  Future<String> _replaceJsonBackup(
+    String jsonData,
+    AppLocalizations l10n,
+  ) async {
     final importedCount = await importDayEntriesJson(jsonData);
     return importedCount == 1
-        ? 'Imported 1 day from JSON.'
-        : 'Imported $importedCount days from JSON.';
+        ? l10n.importedOneDayFromJson
+        : l10n.importedDaysFromJson(importedCount);
   }
 
   Future<_JsonImportAction?> _showJsonImportPreviewDialog(
     PlatformFile file,
     JsonBackupImportPreview preview,
   ) {
+    final l10n = context.l10n;
     return showDialog<_JsonImportAction>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Import JSON backup'),
+          title: Text(l10n.importJsonBackupTitle),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildImportSummaryRow('File', file.name),
-                _buildImportSummaryRow('Size', _formatFileSize(file.size)),
+                _buildImportSummaryRow(l10n.fileLabel, file.name),
+                _buildImportSummaryRow(
+                  l10n.sizeLabel,
+                  _formatFileSize(file.size),
+                ),
                 const SizedBox(height: 12),
                 _buildImportSummaryRow(
-                  'Current data',
+                  l10n.currentDataLabel,
                   _formatDaysAndReadings(
                     preview.currentDays,
                     preview.currentReadings,
                   ),
                 ),
                 _buildImportSummaryRow(
-                  'Backup data',
+                  l10n.backupDataLabel,
                   _formatDaysAndReadings(
                     preview.backupDays,
                     preview.backupReadings,
@@ -330,38 +346,41 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ),
                 const SizedBox(height: 12),
                 _buildImportSummaryRow(
-                  'Merge result',
-                  '${preview.daysAfterMerge} days total',
+                  l10n.mergeResultLabel,
+                  l10n.daysTotal(preview.daysAfterMerge),
                 ),
                 _buildImportSummaryRow(
-                  'New from backup',
-                  '${preview.backupOnlyDays} days, ${preview.newReadings} readings',
+                  l10n.newFromBackupLabel,
+                  l10n.daysReadings(
+                    preview.backupOnlyDays,
+                    preview.newReadings,
+                  ),
                 ),
                 _buildImportSummaryRow(
-                  'Duplicates skipped',
-                  '${preview.duplicateReadings} readings',
+                  l10n.duplicatesSkippedLabel,
+                  l10n.readingsCount(preview.duplicateReadings),
                 ),
                 _buildImportSummaryRow(
-                  'Days changed by merge',
-                  '${preview.daysChangedByMerge} days',
+                  l10n.daysChangedByMergeLabel,
+                  l10n.daysCount(preview.daysChangedByMerge),
                 ),
                 _buildImportSummaryRow(
-                  'Symptoms added',
+                  l10n.symptomsAddedLabel,
                   '${preview.newSymptomValues}',
                 ),
                 _buildImportSummaryRow(
-                  'Day notes filled',
+                  l10n.dayNotesFilledLabel,
                   '${preview.newDayNotes}',
                 ),
                 if (preview.dayNoteConflicts > 0)
                   _buildImportSummaryRow(
-                    'Note conflicts',
-                    '${preview.dayNoteConflicts} local notes kept',
+                    l10n.noteConflictsLabel,
+                    l10n.localNotesKept(preview.dayNoteConflicts),
                   ),
                 const SizedBox(height: 12),
                 _buildImportSummaryRow(
-                  'Replace would remove',
-                  '${preview.currentOnlyDays} local-only days',
+                  l10n.replaceWouldRemoveLabel,
+                  l10n.localOnlyDays(preview.currentOnlyDays),
                 ),
               ],
             ),
@@ -369,17 +388,17 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('CANCEL'),
+              child: Text(l10n.cancelUpper),
             ),
             TextButton(
               onPressed: () =>
                   Navigator.of(context).pop(_JsonImportAction.replace),
-              child: const Text('IMPORT AND REPLACE'),
+              child: Text(l10n.importAndReplaceUpper),
             ),
             FilledButton(
               onPressed: () =>
                   Navigator.of(context).pop(_JsonImportAction.merge),
-              child: const Text('IMPORT AND MERGE'),
+              child: Text(l10n.importAndMergeUpper),
             ),
           ],
         );
@@ -392,26 +411,45 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     JsonBackupImportPreview preview,
   ) async {
     final isMerge = action == _JsonImportAction.merge;
+    final l10n = context.l10n;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: Text(
-            isMerge ? 'Are you sure you want to merge?' : 'Are you sure?',
+            isMerge
+                ? l10n.mergeConfirmationTitle
+                : l10n.replaceConfirmationTitle,
           ),
           content: Text(
             isMerge
-                ? 'This will keep your current data, add ${preview.newReadings} new readings, skip ${preview.duplicateReadings} duplicate readings, and keep local notes for ${preview.dayNoteConflicts} note conflicts.'
-                : 'This will replace your current ${_formatDaysAndReadings(preview.currentDays, preview.currentReadings)} with ${_formatDaysAndReadings(preview.backupDays, preview.backupReadings)} from the backup. ${preview.currentOnlyDays} local-only days will be removed.',
+                ? l10n.mergeConfirmationMessage(
+                    preview.newReadings,
+                    preview.duplicateReadings,
+                    preview.dayNoteConflicts,
+                  )
+                : l10n.replaceConfirmationMessage(
+                    _formatDaysAndReadings(
+                      preview.currentDays,
+                      preview.currentReadings,
+                    ),
+                    _formatDaysAndReadings(
+                      preview.backupDays,
+                      preview.backupReadings,
+                    ),
+                    preview.currentOnlyDays,
+                  ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('CANCEL'),
+              child: Text(l10n.cancelUpper),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: Text(isMerge ? 'MERGE AND IMPORT' : 'IMPORT AND REPLACE'),
+              child: Text(
+                isMerge ? l10n.mergeAndImportUpper : l10n.importAndReplaceUpper,
+              ),
             ),
           ],
         );
@@ -444,9 +482,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   }
 
   String _formatDaysAndReadings(int days, int readings) {
-    final dayLabel = days == 1 ? 'day' : 'days';
-    final readingLabel = readings == 1 ? 'reading' : 'readings';
-    return '$days $dayLabel, $readings $readingLabel';
+    return context.l10n.formatDaysAndReadings(days, readings);
   }
 
   String _formatFileSize(int bytes) {
@@ -508,7 +544,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
     if (!_supportsScheduledNotifications) {
       _showNotificationMessage(
-        'Daily reminders are currently supported on Android, iPhone, and macOS.',
+        context.l10n.scheduledRemindersSupportedSnackbar,
       );
       return;
     }
@@ -537,9 +573,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       });
 
       if (value && !enabled) {
-        _showNotificationMessage(
-          'Notification permission is required to enable daily reminders.',
-        );
+        _showNotificationMessage(context.l10n.notificationPermissionRequired);
       }
     } finally {
       if (mounted) {
@@ -568,8 +602,8 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
 
     _showNotificationMessage(
       scheduled
-          ? 'Reminder updated.'
-          : 'Could not update reminder because notification permission is not available.',
+          ? context.l10n.reminderUpdated
+          : context.l10n.reminderUpdateFailed,
     );
   }
 
@@ -583,7 +617,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         count < minMockEntryCount ||
         count > maxMockEntryCount) {
       _showNotificationMessage(
-        'Enter a mock data count between $minMockEntryCount and $maxMockEntryCount.',
+        context.l10n.mockDataCountError(minMockEntryCount, maxMockEntryCount),
       );
       return;
     }
@@ -593,11 +627,12 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       isDebugDataOperationInProgress = true;
     });
 
+    final successMessage = context.l10n.loadedMockDays(count);
     try {
       await debugLoadMockData(count: count);
       await ref.read(entryListProvider.notifier).loadEntries();
       await loadSettings();
-      _showNotificationMessage('Loaded $count mock days.');
+      _showNotificationMessage(successMessage);
     } finally {
       if (mounted) {
         setState(() {
@@ -616,11 +651,12 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       isDebugDataOperationInProgress = true;
     });
 
+    final successMessage = context.l10n.allLocalDataCleared;
     try {
       await debugClearAllData();
       await ref.read(entryListProvider.notifier).loadEntries();
       await loadSettings();
-      _showNotificationMessage('All local data cleared.');
+      _showNotificationMessage(successMessage);
     } finally {
       if (mounted) {
         setState(() {
@@ -766,6 +802,51 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     );
   }
 
+  Widget _buildLanguageSelector(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Theme(
+        data: ThemeData.from(
+          colorScheme: theme.colorScheme,
+          textTheme: theme.textTheme,
+          useMaterial3: true,
+        ),
+        child: SegmentedButton<AppLocaleChoice>(
+          segments: [
+            ButtonSegment<AppLocaleChoice>(
+              value: AppLocaleChoice.english,
+              label: Text(l10n.languageEnglish),
+            ),
+            ButtonSegment<AppLocaleChoice>(
+              value: AppLocaleChoice.german,
+              label: Text(l10n.languageGerman),
+            ),
+          ],
+          selected: {localeChoice},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) async {
+            final nextChoice = selection.single;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(
+              localePreferenceKey,
+              nextChoice.preferenceValue,
+            );
+            ref.read(localeStateNotifier).setChoice(nextChoice);
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              localeChoice = nextChoice;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildValueEditor(
     BuildContext context, {
     required TextEditingController controller,
@@ -798,7 +879,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ElevatedButton.icon(
                   onPressed: onSave,
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text("SAVE"),
+                  label: Text(context.l10n.saveUpper),
                 ),
               ],
             );
@@ -827,7 +908,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 child: ElevatedButton.icon(
                   onPressed: onSave,
                   icon: const Icon(Icons.save_outlined),
-                  label: const Text("SAVE"),
+                  label: Text(context.l10n.saveUpper),
                 ),
               ),
             ],
@@ -901,10 +982,11 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final mutedTextColor = theme.colorScheme.onSurface.withValues(alpha: 0.72);
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Settings"), centerTitle: true),
+      appBar: AppBar(title: Text(l10n.settingsTitle), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
@@ -912,7 +994,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Customize reminders, tracking preferences, and data tools.',
+                l10n.settingsIntro,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: mutedTextColor,
                   height: 1.35,
@@ -921,16 +1003,24 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               const SizedBox(height: 24),
               _buildSectionLabel(
                 context,
-                'Appearance',
-                'Control how Peak Flow looks while you record daily readings.',
+                l10n.appearanceTitle,
+                l10n.appearanceDescription,
               ),
               _buildSectionContent([
                 _buildInfoRow(
                   context,
+                  icon: Icons.translate_outlined,
+                  title: l10n.languageTitle,
+                  description: l10n.languageDescription,
+                ),
+                _buildLanguageSelector(context),
+                _buildInfoRow(
+                  context,
                   icon: Icons.dark_mode_outlined,
-                  title: 'Dark mode',
-                  description:
-                      'Dark mode ${isDarkMode ? 'is enabled' : 'is disabled'}.',
+                  title: l10n.darkModeTitle,
+                  description: isDarkMode
+                      ? l10n.darkModeEnabledDescription
+                      : l10n.darkModeDisabledDescription,
                   trailing: _buildMaterial3Switch(
                     context,
                     value: isDarkMode,
@@ -947,38 +1037,37 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 _buildInfoRow(
                   context,
                   icon: Icons.palette_outlined,
-                  title: 'Primary color',
-                  description:
-                      'Pick the accent color used for buttons, highlights, and controls.',
+                  title: l10n.primaryColorTitle,
+                  description: l10n.primaryColorDescription,
                 ),
                 _buildPrimaryColorPicker(context),
               ]),
               _buildSectionDivider(context),
               _buildSectionLabel(
                 context,
-                'Peak Flow Setup',
-                'Set the device limit separately from the max used to calculate your color zones.',
+                l10n.peakFlowSetupTitle,
+                l10n.peakFlowSetupDescription,
               ),
               _buildSectionContent([
                 _buildInfoRow(
                   context,
                   icon: Icons.speed_outlined,
-                  title: 'Device max capacity',
-                  description:
-                      'This is the maximum value your device can measure and the upper limit used for input and graphs.',
+                  title: l10n.deviceMaxCapacityTitle,
+                  description: l10n.deviceMaxCapacityDescription,
                 ),
                 _buildValueEditor(
                   context,
                   controller: deviceMaxController,
-                  labelText: 'device max L/min',
+                  labelText: l10n.deviceMaxLabel,
                   onSave: _saveDeviceMaxValue,
                 ),
                 _buildInfoRow(
                   context,
                   icon: Icons.monitor_heart_outlined,
-                  title: useAutomaticMaxValue ? 'Automatic max' : 'Manual max',
-                  description:
-                      'Auto uses your highest saved reading for the green, orange, and red zones. Turn it off to enter your own max.',
+                  title: useAutomaticMaxValue
+                      ? l10n.automaticMaxTitle
+                      : l10n.manualMaxTitle,
+                  description: l10n.colorMaxDescription,
                   trailing: _buildMaterial3Switch(
                     context,
                     value: useAutomaticMaxValue,
@@ -998,9 +1087,13 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   child: Text(
                     useAutomaticMaxValue
                         ? recordedBestValue > 0
-                              ? 'Current automatic max: $automaticReferenceMaxValue L/min'
-                              : 'Automatic mode will use your best saved reading once you have one. Until then it falls back to $automaticReferenceMaxValue L/min.'
-                        : 'Manual mode uses the value below as the color reference.',
+                              ? l10n.currentAutomaticMax(
+                                  automaticReferenceMaxValue,
+                                )
+                              : l10n.automaticMaxFallback(
+                                  automaticReferenceMaxValue,
+                                )
+                        : l10n.manualMaxDescription,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(
                         alpha: 0.68,
@@ -1013,23 +1106,22 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   _buildValueEditor(
                     context,
                     controller: colorMaxController,
-                    labelText: 'manual color max L/min',
+                    labelText: l10n.manualColorMaxLabel,
                     onSave: _saveManualColorMaxValue,
                   ),
               ]),
               _buildSectionDivider(context),
               _buildSectionLabel(
                 context,
-                'Reminder Notification',
-                'Manage the daily reminder message and the time it appears.',
+                l10n.reminderNotificationTitle,
+                l10n.reminderNotificationDescription,
               ),
               _buildSectionContent([
                 _buildInfoRow(
                   context,
                   icon: Icons.notifications_active_outlined,
-                  title: 'Daily reminder',
-                  description:
-                      'Turn scheduled reminders on or off without leaving this screen.',
+                  title: l10n.dailyReminderTitle,
+                  description: l10n.dailyReminderDescription,
                   trailing: _buildMaterial3Switch(
                     context,
                     value: hasNotifications,
@@ -1047,31 +1139,33 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     children: [
                       TextFormField(
                         controller: titleController,
-                        decoration: const InputDecoration(
-                          labelText: "title",
-                          hintText: "Test your Peakflow",
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.notificationTitleLabel,
+                          hintText: l10n.notificationDefaultTitle,
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: bodyController,
-                        decoration: const InputDecoration(
-                          labelText: "body",
-                          hintText: "Take your peakflow record now!",
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.notificationBodyLabel,
+                          hintText: l10n.notificationDefaultBody,
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                       const SizedBox(height: 18),
                       Text(
-                        'Reminder time',
+                        l10n.reminderTimeTitle,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Scheduled for ${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')} each day.',
+                        l10n.scheduledForEachDay(
+                          '${notificationHour.toString().padLeft(2, '0')}:${notificationMinute.toString().padLeft(2, '0')}',
+                        ),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: mutedTextColor,
                         ),
@@ -1079,7 +1173,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       if (!notificationsSupported) ...[
                         const SizedBox(height: 6),
                         Text(
-                          'Daily scheduled reminders are available on Android, iPhone, and macOS.',
+                          l10n.scheduledRemindersSupported,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.error,
                           ),
@@ -1105,7 +1199,11 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                                 ? _saveNotificationSettings
                                 : null,
                             icon: const Icon(Icons.save_outlined),
-                            label: Text(hasNotifications ? 'UPDATE' : 'SAVE'),
+                            label: Text(
+                              hasNotifications
+                                  ? l10n.updateUpper
+                                  : l10n.saveUpper,
+                            ),
                           ),
                         ],
                       ),
@@ -1114,18 +1212,13 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 ),
               ]),
               _buildSectionDivider(context),
-              _buildSectionLabel(
-                context,
-                'Data',
-                'Create or restore a portable backup of your readings and notes.',
-              ),
+              _buildSectionLabel(context, l10n.dataTitle, l10n.dataDescription),
               _buildSectionContent([
                 _buildInfoRow(
                   context,
                   icon: Icons.data_object_outlined,
-                  title: 'JSON backup',
-                  description:
-                      'Export a restorable backup, or import one to replace the local readings on this device.',
+                  title: l10n.jsonBackupTitle,
+                  description: l10n.jsonBackupDescription,
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -1138,14 +1231,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                             ? null
                             : _exportJSON,
                         icon: const Icon(Icons.file_upload_outlined),
-                        label: const Text("EXPORT JSON"),
+                        label: Text(l10n.exportJson),
                       ),
                       OutlinedButton.icon(
                         onPressed: isDataTransferInProgress
                             ? null
                             : _importJSON,
                         icon: const Icon(Icons.file_download_outlined),
-                        label: const Text("IMPORT JSON"),
+                        label: Text(l10n.importJson),
                       ),
                     ],
                   ),
@@ -1155,16 +1248,15 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 _buildSectionDivider(context),
                 _buildSectionLabel(
                   context,
-                  'Debug',
-                  'Load sample readings for development or clear the local database again.',
+                  l10n.debugTitle,
+                  l10n.debugDescription,
                 ),
                 _buildSectionContent([
                   _buildInfoRow(
                     context,
                     icon: Icons.developer_mode_outlined,
-                    title: 'Mock data tools',
-                    description:
-                        'These actions are only visible in debug builds and replace your current local dataset.',
+                    title: l10n.mockDataToolsTitle,
+                    description: l10n.mockDataToolsDescription,
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -1172,10 +1264,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       controller: debugMockCountController,
                       enabled: !isDebugDataOperationInProgress,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'mock days to generate',
+                      decoration: InputDecoration(
+                        labelText: l10n.mockDaysToGenerateLabel,
                         hintText: '120',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
                       ),
                       inputFormatters: [
                         FilteringTextInputFormatter(
@@ -1188,7 +1280,10 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                     child: Text(
-                      'Allowed range: $minMockEntryCount to $maxMockEntryCount days.',
+                      l10n.allowedMockDaysRange(
+                        minMockEntryCount,
+                        maxMockEntryCount,
+                      ),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: mutedTextColor,
                       ),
@@ -1205,14 +1300,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                               ? null
                               : _loadMockData,
                           icon: const Icon(Icons.data_array_outlined),
-                          label: const Text('LOAD MOCK DATA'),
+                          label: Text(l10n.loadMockData),
                         ),
                         OutlinedButton.icon(
                           onPressed: isDebugDataOperationInProgress
                               ? null
                               : _clearDebugData,
                           icon: const Icon(Icons.delete_sweep_outlined),
-                          label: const Text('CLEAR ALL DATA'),
+                          label: Text(l10n.clearAllData),
                         ),
                       ],
                     ),
@@ -1237,7 +1332,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
               const SizedBox(height: 10),
               Center(
                 child: Text(
-                  'Made with ❤️ by @joscha0',
+                  l10n.madeWith,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: mutedTextColor,
                   ),
