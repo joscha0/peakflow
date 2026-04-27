@@ -60,6 +60,125 @@ void main() {
     expect(prefs.getBool(readingsMigratedToDriftKey), isTrue);
   });
 
+  test('previews merge impact before importing a JSON backup', () async {
+    await importDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 20),
+          readings: [_reading(hour: 7, minute: 0, value: 360)],
+          morningValue: 360,
+        ),
+        _entry(
+          date: DateTime(2026, 4, 21),
+          note: 'local note',
+          readings: [
+            _reading(hour: 8, minute: 0, value: 300, note: 'same'),
+            _reading(hour: 20, minute: 0, value: 420),
+          ],
+          checkboxValues: const {'Cough': true},
+          morningValue: 300,
+          eveningValue: 420,
+        ),
+      ]),
+    );
+
+    final backup = encodeDayEntriesJsonBackup([
+      _entry(
+        date: DateTime(2026, 4, 21),
+        note: 'backup note',
+        readings: [
+          _reading(hour: 8, minute: 0, value: 300, note: 'same'),
+          _reading(hour: 9, minute: 30, value: 330),
+        ],
+        checkboxValues: const {'Wheezing breathing': true},
+        morningValue: 315,
+        eveningValue: -1,
+      ),
+      _entry(
+        date: DateTime(2026, 4, 22),
+        readings: [_reading(hour: 18, minute: 15, value: 510)],
+        morningValue: -1,
+        eveningValue: 510,
+      ),
+    ]);
+
+    final preview = await previewDayEntriesJsonImport(backup);
+
+    expect(preview.currentDays, 2);
+    expect(preview.currentReadings, 3);
+    expect(preview.backupDays, 2);
+    expect(preview.backupReadings, 3);
+    expect(preview.currentOnlyDays, 1);
+    expect(preview.backupOnlyDays, 1);
+    expect(preview.overlappingDays, 1);
+    expect(preview.daysChangedByMerge, 2);
+    expect(preview.newReadings, 2);
+    expect(preview.duplicateReadings, 1);
+    expect(preview.newSymptomValues, 1);
+    expect(preview.dayNoteConflicts, 1);
+    expect(preview.daysAfterMerge, 3);
+  });
+
+  test('merges a JSON backup without replacing newer local data', () async {
+    await importDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 20),
+          readings: [_reading(hour: 7, minute: 0, value: 360)],
+          morningValue: 360,
+        ),
+        _entry(
+          date: DateTime(2026, 4, 21),
+          note: 'local note',
+          readings: [
+            _reading(hour: 8, minute: 0, value: 300, note: 'same'),
+            _reading(hour: 20, minute: 0, value: 420),
+          ],
+          checkboxValues: const {'Cough': true},
+          morningValue: 300,
+          eveningValue: 420,
+        ),
+      ]),
+    );
+
+    final mergeResult = await mergeDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 21),
+          note: 'backup note',
+          readings: [
+            _reading(hour: 8, minute: 0, value: 300, note: 'same'),
+            _reading(hour: 9, minute: 30, value: 330),
+          ],
+          checkboxValues: const {'Wheezing breathing': true},
+          morningValue: 315,
+          eveningValue: -1,
+        ),
+        _entry(
+          date: DateTime(2026, 4, 22),
+          readings: [_reading(hour: 18, minute: 15, value: 510)],
+          morningValue: -1,
+          eveningValue: 510,
+        ),
+      ]),
+    );
+
+    final entries = await getDayEntries();
+    final mergedDay = entries.firstWhere(
+      (entry) => entry.date == DateTime(2026, 4, 21),
+    );
+
+    expect(mergeResult.newReadings, 2);
+    expect(entries, hasLength(3));
+    expect(mergedDay.note, 'local note');
+    expect(mergedDay.readings.map((reading) => reading.value), [300, 330, 420]);
+    expect(mergedDay.checkboxValues['Cough'], isTrue);
+    expect(mergedDay.checkboxValues['Wheezing breathing'], isTrue);
+    expect(mergedDay.morningValue, 315);
+    expect(mergedDay.eveningValue, 420);
+    expect(await getBestValue(), 510);
+  });
+
   test('decodes a legacy list-shaped JSON export', () {
     final entry = _entry(
       date: DateTime(2026, 4, 23),

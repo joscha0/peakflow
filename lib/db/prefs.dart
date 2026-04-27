@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:peakflow/db/app_database.dart';
 import 'package:peakflow/debug/mock_data.dart';
+import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/models/reading_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -85,6 +86,40 @@ Future<List<DayEntry>> getDayEntries() async {
   return database.getAllDayEntries();
 }
 
+class JsonBackupImportPreview {
+  const JsonBackupImportPreview({
+    required this.currentDays,
+    required this.currentReadings,
+    required this.backupDays,
+    required this.backupReadings,
+    required this.currentOnlyDays,
+    required this.backupOnlyDays,
+    required this.overlappingDays,
+    required this.daysChangedByMerge,
+    required this.newReadings,
+    required this.duplicateReadings,
+    required this.newSymptomValues,
+    required this.newDayNotes,
+    required this.dayNoteConflicts,
+  });
+
+  final int currentDays;
+  final int currentReadings;
+  final int backupDays;
+  final int backupReadings;
+  final int currentOnlyDays;
+  final int backupOnlyDays;
+  final int overlappingDays;
+  final int daysChangedByMerge;
+  final int newReadings;
+  final int duplicateReadings;
+  final int newSymptomValues;
+  final int newDayNotes;
+  final int dayNoteConflicts;
+
+  int get daysAfterMerge => currentDays + backupOnlyDays;
+}
+
 String encodeDayEntriesJsonBackup(List<DayEntry> entries) {
   final backup = {
     'format': 'peakflow.backup',
@@ -126,6 +161,15 @@ Future<String> exportDayEntriesJson() async {
   return encodeDayEntriesJsonBackup(await getDayEntries());
 }
 
+Future<JsonBackupImportPreview> previewDayEntriesJsonImport(String data) async {
+  final backupEntries = decodeDayEntriesJsonBackup(data);
+  final currentEntries = await getDayEntries();
+  return _previewJsonBackupImport(
+    currentEntries: currentEntries,
+    backupEntries: backupEntries,
+  );
+}
+
 Future<int> importDayEntriesJson(String data) async {
   final entries = decodeDayEntriesJsonBackup(data);
   final database = await _getDatabase();
@@ -134,6 +178,26 @@ Future<int> importDayEntriesJson(String data) async {
   await prefs.setBool(readingsMigratedToDriftKey, true);
   await prefs.setInt(bestValueKey, await database.getBestReadingValue());
   return entries.length;
+}
+
+Future<JsonBackupImportPreview> mergeDayEntriesJson(String data) async {
+  final backupEntries = decodeDayEntriesJsonBackup(data);
+  final database = await _getDatabase();
+  final currentEntries = await database.getAllDayEntries();
+  final preview = _previewJsonBackupImport(
+    currentEntries: currentEntries,
+    backupEntries: backupEntries,
+  );
+  final mergedEntries = _mergeJsonBackupEntries(
+    currentEntries: currentEntries,
+    backupEntries: backupEntries,
+  );
+
+  await database.replaceAllDayEntries(mergedEntries);
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool(readingsMigratedToDriftKey, true);
+  await prefs.setInt(bestValueKey, await database.getBestReadingValue());
+  return preview;
 }
 
 Future<DayEntry?> getDayEntry(DateTime date) async {
@@ -221,6 +285,171 @@ List<int> getMorningEveningValue(List<Reading> readings) {
     eveningCount >= 1 ? (eveningSum / eveningCount).round() : -1,
   );
   return morningEvening;
+}
+
+JsonBackupImportPreview _previewJsonBackupImport({
+  required List<DayEntry> currentEntries,
+  required List<DayEntry> backupEntries,
+}) {
+  final currentByKey = {
+    for (final entry in currentEntries) dateKeyFor(entry.date): entry,
+  };
+  final backupByKey = {
+    for (final entry in backupEntries) dateKeyFor(entry.date): entry,
+  };
+
+  var newReadings = 0;
+  var duplicateReadings = 0;
+  var newSymptomValues = 0;
+  var newDayNotes = 0;
+  var dayNoteConflicts = 0;
+  var daysChangedByMerge = 0;
+
+  for (final backupEntry in backupEntries) {
+    final currentEntry = currentByKey[dateKeyFor(backupEntry.date)];
+    if (currentEntry == null) {
+      newReadings += backupEntry.readings.length;
+      daysChangedByMerge++;
+      continue;
+    }
+
+    var dayChanged = false;
+    for (final backupReading in backupEntry.readings) {
+      if (currentEntry.readings.any(
+        (currentReading) => _isSameReading(currentReading, backupReading),
+      )) {
+        duplicateReadings++;
+      } else {
+        newReadings++;
+        dayChanged = true;
+      }
+    }
+
+    for (final symptom in backupEntry.checkboxValues.entries) {
+      if (symptom.value && currentEntry.checkboxValues[symptom.key] != true) {
+        newSymptomValues++;
+        dayChanged = true;
+      }
+    }
+
+    if (currentEntry.note.trim().isEmpty &&
+        backupEntry.note.trim().isNotEmpty) {
+      newDayNotes++;
+      dayChanged = true;
+    } else if (currentEntry.note.trim().isNotEmpty &&
+        backupEntry.note.trim().isNotEmpty &&
+        currentEntry.note != backupEntry.note) {
+      dayNoteConflicts++;
+    }
+
+    if (dayChanged) {
+      daysChangedByMerge++;
+    }
+  }
+
+  return JsonBackupImportPreview(
+    currentDays: currentEntries.length,
+    currentReadings: _countReadings(currentEntries),
+    backupDays: backupEntries.length,
+    backupReadings: _countReadings(backupEntries),
+    currentOnlyDays: currentByKey.keys
+        .where((key) => !backupByKey.containsKey(key))
+        .length,
+    backupOnlyDays: backupByKey.keys
+        .where((key) => !currentByKey.containsKey(key))
+        .length,
+    overlappingDays: backupByKey.keys
+        .where((key) => currentByKey.containsKey(key))
+        .length,
+    daysChangedByMerge: daysChangedByMerge,
+    newReadings: newReadings,
+    duplicateReadings: duplicateReadings,
+    newSymptomValues: newSymptomValues,
+    newDayNotes: newDayNotes,
+    dayNoteConflicts: dayNoteConflicts,
+  );
+}
+
+List<DayEntry> _mergeJsonBackupEntries({
+  required List<DayEntry> currentEntries,
+  required List<DayEntry> backupEntries,
+}) {
+  final mergedByKey = {
+    for (final entry in currentEntries) dateKeyFor(entry.date): entry,
+  };
+
+  for (final backupEntry in backupEntries) {
+    final key = dateKeyFor(backupEntry.date);
+    final currentEntry = mergedByKey[key];
+    if (currentEntry == null) {
+      mergedByKey[key] = _withRecomputedMorningEvening(backupEntry);
+      continue;
+    }
+
+    final readings = List<Reading>.from(currentEntry.readings);
+    for (final backupReading in backupEntry.readings) {
+      if (!readings.any((reading) => _isSameReading(reading, backupReading))) {
+        readings.add(backupReading);
+      }
+    }
+
+    readings.sort((first, second) {
+      final hourCompare = first.time.hour.compareTo(second.time.hour);
+      if (hourCompare != 0) {
+        return hourCompare;
+      }
+      return first.time.minute.compareTo(second.time.minute);
+    });
+
+    final checkboxValues = <String, bool>{
+      ...defaultCheckboxValues,
+      ...currentEntry.checkboxValues,
+    };
+    for (final symptom in backupEntry.checkboxValues.entries) {
+      if (symptom.value) {
+        checkboxValues[symptom.key] = true;
+      }
+    }
+
+    final note = currentEntry.note.trim().isEmpty
+        ? backupEntry.note
+        : currentEntry.note;
+    final morningEvening = getMorningEveningValue(readings);
+    mergedByKey[key] = DayEntry(
+      date: currentEntry.date,
+      readings: readings,
+      note: note,
+      morningValue: morningEvening[0],
+      eveningValue: morningEvening[1],
+      checkboxValues: checkboxValues,
+    );
+  }
+
+  return mergedByKey.values.toList()
+    ..sort((first, second) => first.date.compareTo(second.date));
+}
+
+DayEntry _withRecomputedMorningEvening(DayEntry entry) {
+  final morningEvening = getMorningEveningValue(entry.readings);
+  return DayEntry(
+    date: entry.date,
+    readings: entry.readings,
+    note: entry.note,
+    morningValue: morningEvening[0],
+    eveningValue: morningEvening[1],
+    checkboxValues: entry.checkboxValues,
+  );
+}
+
+bool _isSameReading(Reading first, Reading second) {
+  return first.time.hour == second.time.hour &&
+      first.time.minute == second.time.minute &&
+      first.value == second.value &&
+      first.note == second.note;
+}
+
+int _countReadings(List<DayEntry> entries) {
+  return entries.fold<int>(0, (count, entry) => count + entry.readings.length);
 }
 
 Future<void> deleteDay(DateTime date) async {

@@ -23,6 +23,8 @@ class SettingsView extends ConsumerStatefulWidget {
   ConsumerState<SettingsView> createState() => _SettingsViewState();
 }
 
+enum _JsonImportAction { merge, replace }
+
 class _SettingsViewState extends ConsumerState<SettingsView> {
   final deviceMaxController = TextEditingController();
   final colorMaxController = TextEditingController();
@@ -289,28 +291,30 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
       return;
     }
 
-    final shouldImport = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Import JSON backup?'),
-          content: Text(
-            'This will replace all readings and notes currently stored on this device with ${selectedFile.name}.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('CANCEL'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('IMPORT'),
-            ),
-          ],
-        );
-      },
-    );
-    if (shouldImport != true || !mounted) {
+    final JsonBackupImportPreview preview;
+    try {
+      preview = await previewDayEntriesJsonImport(jsonData);
+    } on FormatException {
+      _showNotificationMessage(
+        'That JSON file is not a valid Peak Flow backup.',
+      );
+      return;
+    } catch (_) {
+      _showNotificationMessage('Could not read that JSON file.');
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    final action = await _showJsonImportPreviewDialog(selectedFile, preview);
+    if (action == null || !mounted) {
+      return;
+    }
+
+    final confirmed = await _showJsonImportConfirmationDialog(action, preview);
+    if (!confirmed || !mounted) {
       return;
     }
 
@@ -319,15 +323,13 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
     });
 
     try {
-      final importedCount = await importDayEntriesJson(jsonData);
+      final message = action == _JsonImportAction.merge
+          ? await _mergeJsonBackup(jsonData)
+          : await _replaceJsonBackup(jsonData);
       await ref.read(entryListProvider.notifier).loadEntries();
       ref.invalidate(colorReferenceMaxValueProvider);
       await loadSettings();
-      _showNotificationMessage(
-        importedCount == 1
-            ? 'Imported 1 day from JSON.'
-            : 'Imported $importedCount days from JSON.',
-      );
+      _showNotificationMessage(message);
     } on FormatException {
       _showNotificationMessage(
         'That JSON file is not a valid Peak Flow backup.',
@@ -341,6 +343,188 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
         });
       }
     }
+  }
+
+  Future<String> _mergeJsonBackup(String jsonData) async {
+    final result = await mergeDayEntriesJson(jsonData);
+    if (result.daysChangedByMerge == 0 && result.newReadings == 0) {
+      return 'Backup merged. No new data was found.';
+    }
+
+    return 'Merged ${result.daysChangedByMerge} days and added ${result.newReadings} readings.';
+  }
+
+  Future<String> _replaceJsonBackup(String jsonData) async {
+    final importedCount = await importDayEntriesJson(jsonData);
+    return importedCount == 1
+        ? 'Imported 1 day from JSON.'
+        : 'Imported $importedCount days from JSON.';
+  }
+
+  Future<_JsonImportAction?> _showJsonImportPreviewDialog(
+    PlatformFile file,
+    JsonBackupImportPreview preview,
+  ) {
+    return showDialog<_JsonImportAction>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Import JSON backup'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildImportSummaryRow('File', file.name),
+                _buildImportSummaryRow('Size', _formatFileSize(file.size)),
+                const SizedBox(height: 12),
+                _buildImportSummaryRow(
+                  'Current data',
+                  _formatDaysAndReadings(
+                    preview.currentDays,
+                    preview.currentReadings,
+                  ),
+                ),
+                _buildImportSummaryRow(
+                  'Backup data',
+                  _formatDaysAndReadings(
+                    preview.backupDays,
+                    preview.backupReadings,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildImportSummaryRow(
+                  'Merge result',
+                  '${preview.daysAfterMerge} days total',
+                ),
+                _buildImportSummaryRow(
+                  'New from backup',
+                  '${preview.backupOnlyDays} days, ${preview.newReadings} readings',
+                ),
+                _buildImportSummaryRow(
+                  'Duplicates skipped',
+                  '${preview.duplicateReadings} readings',
+                ),
+                _buildImportSummaryRow(
+                  'Days changed by merge',
+                  '${preview.daysChangedByMerge} days',
+                ),
+                _buildImportSummaryRow(
+                  'Symptoms added',
+                  '${preview.newSymptomValues}',
+                ),
+                _buildImportSummaryRow(
+                  'Day notes filled',
+                  '${preview.newDayNotes}',
+                ),
+                if (preview.dayNoteConflicts > 0)
+                  _buildImportSummaryRow(
+                    'Note conflicts',
+                    '${preview.dayNoteConflicts} local notes kept',
+                  ),
+                const SizedBox(height: 12),
+                _buildImportSummaryRow(
+                  'Replace would remove',
+                  '${preview.currentOnlyDays} local-only days',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('CANCEL'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_JsonImportAction.replace),
+              child: const Text('IMPORT AND REPLACE'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_JsonImportAction.merge),
+              child: const Text('IMPORT AND MERGE'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _showJsonImportConfirmationDialog(
+    _JsonImportAction action,
+    JsonBackupImportPreview preview,
+  ) async {
+    final isMerge = action == _JsonImportAction.merge;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            isMerge ? 'Are you sure you want to merge?' : 'Are you sure?',
+          ),
+          content: Text(
+            isMerge
+                ? 'This will keep your current data, add ${preview.newReadings} new readings, skip ${preview.duplicateReadings} duplicate readings, and keep local notes for ${preview.dayNoteConflicts} note conflicts.'
+                : 'This will replace your current ${_formatDaysAndReadings(preview.currentDays, preview.currentReadings)} with ${_formatDaysAndReadings(preview.backupDays, preview.backupReadings)} from the backup. ${preview.currentOnlyDays} local-only days will be removed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(isMerge ? 'MERGE AND IMPORT' : 'IMPORT AND REPLACE'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed == true;
+  }
+
+  Widget _buildImportSummaryRow(String label, String value) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 132,
+            child: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDaysAndReadings(int days, int readings) {
+    final dayLabel = days == 1 ? 'day' : 'days';
+    final readingLabel = readings == 1 ? 'reading' : 'readings';
+    return '$days $dayLabel, $readings $readingLabel';
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+
+    final kilobytes = bytes / 1024;
+    if (kilobytes < 1024) {
+      return '${kilobytes.toStringAsFixed(1)} KB';
+    }
+
+    final megabytes = kilobytes / 1024;
+    return '${megabytes.toStringAsFixed(1)} MB';
   }
 
   bool get _supportsScheduledNotifications =>
