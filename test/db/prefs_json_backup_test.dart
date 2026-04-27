@@ -60,6 +60,40 @@ void main() {
     expect(prefs.getBool(readingsMigratedToDriftKey), isTrue);
   });
 
+  test('replace import removes days that are only stored locally', () async {
+    await importDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 20),
+          readings: [_reading(hour: 8, minute: 0, value: 310)],
+          morningValue: 310,
+        ),
+        _entry(
+          date: DateTime(2026, 4, 21),
+          readings: [_reading(hour: 8, minute: 0, value: 320)],
+          morningValue: 320,
+        ),
+      ]),
+    );
+
+    await importDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 21),
+          readings: [_reading(hour: 9, minute: 0, value: 430)],
+          morningValue: 430,
+        ),
+      ]),
+    );
+
+    final entries = await getDayEntries();
+
+    expect(entries, hasLength(1));
+    expect(entries.single.date, DateTime(2026, 4, 21));
+    expect(entries.single.readings.single.value, 430);
+    expect(await getBestValue(), 430);
+  });
+
   test('previews merge impact before importing a JSON backup', () async {
     await importDayEntriesJson(
       encodeDayEntriesJsonBackup([
@@ -177,6 +211,65 @@ void main() {
     expect(mergedDay.morningValue, 315);
     expect(mergedDay.eveningValue, 420);
     expect(await getBestValue(), 510);
+  });
+
+  test(
+    'merge skips exact duplicate readings without changing local data',
+    () async {
+      final entry = _entry(
+        date: DateTime(2026, 4, 21),
+        note: 'local note',
+        readings: [_reading(hour: 8, minute: 0, value: 300, note: 'same')],
+        checkboxValues: const {'Cough': true},
+        morningValue: 300,
+      );
+      final backup = encodeDayEntriesJsonBackup([entry]);
+
+      await importDayEntriesJson(backup);
+
+      final preview = await previewDayEntriesJsonImport(backup);
+      final mergeResult = await mergeDayEntriesJson(backup);
+      final entries = await getDayEntries();
+
+      expect(preview.newReadings, 0);
+      expect(preview.duplicateReadings, 1);
+      expect(preview.daysChangedByMerge, 0);
+      expect(mergeResult.newReadings, 0);
+      expect(entries, hasLength(1));
+      expect(entries.single.readings, hasLength(1));
+      expect(entries.single.note, 'local note');
+      expect(entries.single.checkboxValues['Cough'], isTrue);
+    },
+  );
+
+  test('merge fills an empty local day note from the backup', () async {
+    await importDayEntriesJson(
+      encodeDayEntriesJsonBackup([
+        _entry(
+          date: DateTime(2026, 4, 21),
+          readings: [_reading(hour: 8, minute: 0, value: 300)],
+          morningValue: 300,
+        ),
+      ]),
+    );
+
+    final backup = encodeDayEntriesJsonBackup([
+      _entry(
+        date: DateTime(2026, 4, 21),
+        note: 'backup note',
+        readings: [_reading(hour: 8, minute: 0, value: 300)],
+        morningValue: 300,
+      ),
+    ]);
+
+    final preview = await previewDayEntriesJsonImport(backup);
+    await mergeDayEntriesJson(backup);
+    final entries = await getDayEntries();
+
+    expect(preview.newDayNotes, 1);
+    expect(preview.dayNoteConflicts, 0);
+    expect(entries.single.note, 'backup note');
+    expect(entries.single.readings, hasLength(1));
   });
 
   test('decodes a legacy list-shaped JSON export', () {
