@@ -383,12 +383,7 @@ class _GraphViewState extends ConsumerState<GraphView> {
                       selectedRangePreset == _GraphRangePreset.last3Months,
                   onSelected: () => _selectTrailingMonths(3),
                 ),
-                _buildRangePresetChip(
-                  label: 'Last 12 Months',
-                  selected:
-                      selectedRangePreset == _GraphRangePreset.last12Months,
-                  onSelected: () => _selectTrailingMonths(12),
-                ),
+
                 OutlinedButton.icon(
                   onPressed: _pickCustomRange,
                   icon: const Icon(Icons.date_range_rounded, size: 18),
