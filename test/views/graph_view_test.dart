@@ -59,6 +59,60 @@ void main() {
     expect(find.text('Measurements'), findsOneWidget);
     expect(find.text('4 times'), findsOneWidget);
   });
+
+  testWidgets('date range controls stay fixed while graph content scrolls', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 520);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final entries = [
+      buildDayEntry(
+        date: DateTime(2026, 4, 24),
+        readings: const [],
+        morningValue: 411,
+        eveningValue: 503,
+      ),
+      buildDayEntry(
+        date: DateTime(2026, 4, 25),
+        readings: const [],
+        morningValue: 631,
+      ),
+      buildDayEntry(
+        date: DateTime(2026, 4, 26),
+        readings: const [],
+        eveningValue: 337,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          entryListProvider.overrideWith((ref) => _SeededEntries(entries)),
+        ],
+        child: const MaterialApp(home: GraphView()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+
+    final dateRangeFinder = find.text('Date Range');
+    final initialDateRangeTop = tester.getTopLeft(dateRangeFinder).dy;
+
+    await tester.drag(
+      find.byType(SingleChildScrollView).first,
+      const Offset(0, -260),
+    );
+    await tester.pumpAndSettle();
+
+    expect(dateRangeFinder, findsOneWidget);
+    expect(
+      tester.getTopLeft(dateRangeFinder).dy,
+      moreOrLessEquals(initialDateRangeTop),
+    );
+  });
 }
 
 class _SeededEntries extends DayEntriesState {

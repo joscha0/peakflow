@@ -132,13 +132,9 @@ class _HomeViewState extends ConsumerState<HomeView> {
                               });
                             },
                           )
-                        : Padding(
-                            key: const ValueKey('graphPage'),
-                            padding: const EdgeInsets.only(bottom: 88),
-                            child: GraphView(
-                              key: ValueKey(dataPageRevision),
-                              showScaffold: false,
-                            ),
+                        : GraphView(
+                            key: ValueKey(dataPageRevision),
+                            showScaffold: false,
                           ),
                   ),
                 ),
