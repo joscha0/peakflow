@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:csv/csv.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,6 @@ import 'package:peakflow/models/day_entry_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/services/notification_service.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -36,6 +36,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   bool isDarkMode = true;
   bool hasNotifications = false;
   bool notificationsSupported = true;
+  bool isDataTransferInProgress = false;
   bool isNotificationOperationInProgress = false;
   bool isDebugDataOperationInProgress = false;
   bool useAutomaticMaxValue = true;
@@ -175,30 +176,171 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   }
 
   Future<void> exportCSV() async {
-    final box = context.findRenderObject() as RenderBox?;
+    if (isDataTransferInProgress) {
+      return;
+    }
+
+    setState(() {
+      isDataTransferInProgress = true;
+    });
+
     final listItems = <List<String>>[
       ['date', 'time', 'reading', 'noteReading', 'noteDay', 'symptoms'],
     ];
-    final entries = await getDayEntries();
 
-    for (final entry in entries) {
-      listItems.addAll(dayEntryToCsvList(entry));
+    try {
+      final entries = await getDayEntries();
+
+      for (final entry in entries) {
+        listItems.addAll(dayEntryToCsvList(entry));
+      }
+
+      final csv = const ListToCsvConverter().convert(listItems);
+      await _saveExportFile(
+        dialogTitle: 'Export CSV',
+        fileName: 'peakflow-export.csv',
+        extension: 'csv',
+        bytes: Uint8List.fromList(utf8.encode(csv)),
+        successMessage: 'CSV export saved.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDataTransferInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveExportFile({
+    required String dialogTitle,
+    required String fileName,
+    required String extension,
+    required Uint8List bytes,
+    required String successMessage,
+  }) async {
+    final outputPath = await FilePicker.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: [extension],
+      bytes: bytes,
+    );
+
+    if (!mounted) {
+      return;
     }
 
-    final csv = const ListToCsvConverter().convert(listItems);
+    if (outputPath != null || kIsWeb) {
+      _showNotificationMessage(
+        kIsWeb ? 'Export download started.' : successMessage,
+      );
+    }
+  }
 
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [
-          XFile.fromData(
-            Uint8List.fromList(utf8.encode(csv)),
-            mimeType: 'text/csv',
-          ),
-        ],
-        fileNameOverrides: const ['peakflow-export.csv'],
-        sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size,
-      ),
+  Future<void> _exportJSON() async {
+    if (isDataTransferInProgress) {
+      return;
+    }
+
+    setState(() {
+      isDataTransferInProgress = true;
+    });
+
+    try {
+      final json = await exportDayEntriesJson();
+      await _saveExportFile(
+        dialogTitle: 'Export JSON backup',
+        fileName: 'peakflow-backup.json',
+        extension: 'json',
+        bytes: Uint8List.fromList(utf8.encode(json)),
+        successMessage: 'JSON backup saved.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDataTransferInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importJSON() async {
+    if (isDataTransferInProgress) {
+      return;
+    }
+
+    final result = await FilePicker.pickFiles(
+      allowMultiple: false,
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
     );
+    if (result == null || result.files.isEmpty || !mounted) {
+      return;
+    }
+
+    final selectedFile = result.files.single;
+    final jsonData = selectedFile.bytes == null
+        ? await selectedFile.xFile.readAsString()
+        : utf8.decode(selectedFile.bytes!);
+    if (jsonData.trim().isEmpty || !mounted) {
+      _showNotificationMessage('That JSON file is empty.');
+      return;
+    }
+
+    final shouldImport = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Import JSON backup?'),
+          content: Text(
+            'This will replace all readings and notes currently stored on this device with ${selectedFile.name}.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('IMPORT'),
+            ),
+          ],
+        );
+      },
+    );
+    if (shouldImport != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      isDataTransferInProgress = true;
+    });
+
+    try {
+      final importedCount = await importDayEntriesJson(jsonData);
+      await ref.read(entryListProvider.notifier).loadEntries();
+      ref.invalidate(colorReferenceMaxValueProvider);
+      await loadSettings();
+      _showNotificationMessage(
+        importedCount == 1
+            ? 'Imported 1 day from JSON.'
+            : 'Imported $importedCount days from JSON.',
+      );
+    } on FormatException {
+      _showNotificationMessage(
+        'That JSON file is not a valid Peak Flow backup.',
+      );
+    } catch (_) {
+      _showNotificationMessage('Could not import that JSON file.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isDataTransferInProgress = false;
+        });
+      }
+    }
   }
 
   bool get _supportsScheduledNotifications =>
@@ -865,15 +1007,39 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   description:
                       'Share a spreadsheet-friendly export of your peak flow history.',
                 ),
+                _buildInfoRow(
+                  context,
+                  icon: Icons.data_object_outlined,
+                  title: 'JSON backup',
+                  description:
+                      'Export a restorable backup, or import one to replace the local readings on this device.',
+                ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: ElevatedButton.icon(
-                      onPressed: exportCSV,
-                      icon: const Icon(Icons.ios_share_outlined),
-                      label: const Text("EXPORT CSV"),
-                    ),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: isDataTransferInProgress ? null : exportCSV,
+                        icon: const Icon(Icons.ios_share_outlined),
+                        label: const Text("EXPORT CSV"),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: isDataTransferInProgress
+                            ? null
+                            : _exportJSON,
+                        icon: const Icon(Icons.file_upload_outlined),
+                        label: const Text("EXPORT JSON"),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: isDataTransferInProgress
+                            ? null
+                            : _importJSON,
+                        icon: const Icon(Icons.file_download_outlined),
+                        label: const Text("IMPORT JSON"),
+                      ),
+                    ],
                   ),
                 ),
               ]),

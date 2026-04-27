@@ -273,6 +273,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  file_picker:
+    dependency: "direct main"
+    description:
+      name: file_picker
+      sha256: f13a03000d942e476bc1ff0a736d2e9de711d2f89a95cd4c1d88f861c3348387
+      url: "https://pub.dev"
+    source: hosted
+    version: "11.0.2"
   fixnum:
     dependency: transitive
     description:
@@ -326,6 +334,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.3"
+  flutter_plugin_android_lifecycle:
+    dependency: transitive
+    description:
+      name: flutter_plugin_android_lifecycle
+      sha256: "38d1c268de9097ff59cf0e844ac38759fc78f76836d37edad06fa21e182055a0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.34"
   flutter_riverpod:
     dependency: "direct main"
     description:
@@ -672,22 +688,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.1"
-  share_plus:
-    dependency: "direct main"
-    description:
-      name: share_plus
-      sha256: d7dc0630a923883c6328ca31b89aa682bacbf2f8304162d29f7c6aaff03a27a1
-      url: "https://pub.dev"
-    source: hosted
-    version: "11.1.0"
-  share_plus_platform_interface:
-    dependency: transitive
-    description:
-      name: share_plus_platform_interface
-      sha256: "88023e53a13429bd65d8e85e11a9b484f49d4c190abbd96c7932b74d6927cc9a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.1.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -997,14 +997,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.5"
-  uuid:
-    dependency: transitive
-    description:
-      name: uuid
-      sha256: "1fef9e8e11e2991bb773070d4656b7bd5d850967a2456cfc83cf47925ba79489"
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.5.3"
   vector_math:
     dependency: transitive
     description:

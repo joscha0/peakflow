@@ -85,6 +85,57 @@ Future<List<DayEntry>> getDayEntries() async {
   return database.getAllDayEntries();
 }
 
+String encodeDayEntriesJsonBackup(List<DayEntry> entries) {
+  final backup = {
+    'format': 'peakflow.backup',
+    'version': 1,
+    'exportedAt': DateTime.now().toUtc().toIso8601String(),
+    'entries': entries.map((entry) => entry.toJson()).toList(),
+  };
+
+  return const JsonEncoder.withIndent('  ').convert(backup);
+}
+
+List<DayEntry> decodeDayEntriesJsonBackup(String data) {
+  final decoded = jsonDecode(data);
+  final Object? rawEntries;
+
+  if (decoded is List) {
+    rawEntries = decoded;
+  } else if (decoded is Map<String, dynamic>) {
+    rawEntries = decoded['entries'] ?? decoded['dayEntries'];
+  } else {
+    throw const FormatException('Backup JSON must be an object or list.');
+  }
+
+  if (rawEntries is! List) {
+    throw const FormatException('Backup JSON does not contain entries.');
+  }
+
+  return rawEntries
+      .map((entry) {
+        if (entry is! Map<String, dynamic>) {
+          throw const FormatException('Every backup entry must be an object.');
+        }
+        return DayEntry.fromJson(entry);
+      })
+      .toList(growable: false);
+}
+
+Future<String> exportDayEntriesJson() async {
+  return encodeDayEntriesJsonBackup(await getDayEntries());
+}
+
+Future<int> importDayEntriesJson(String data) async {
+  final entries = decodeDayEntriesJsonBackup(data);
+  final database = await _getDatabase();
+  await database.replaceAllDayEntries(entries);
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool(readingsMigratedToDriftKey, true);
+  await prefs.setInt(bestValueKey, await database.getBestReadingValue());
+  return entries.length;
+}
+
 Future<DayEntry?> getDayEntry(DateTime date) async {
   final database = await _getDatabase();
   return database.getDayEntry(date);
