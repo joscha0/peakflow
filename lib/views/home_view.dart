@@ -218,9 +218,9 @@ class _HomeViewState extends ConsumerState<HomeView> {
 
   int _getCrossAxisCount(double width) {
     const horizontalPadding = 16.0;
-    const desiredCardWidth = 96.0;
+    final desiredCardWidth = width < 600 ? 96.0 : 136.0;
     final usableWidth = width - horizontalPadding;
-    return (usableWidth / desiredCardWidth).floor().clamp(2, 8);
+    return (usableWidth / desiredCardWidth).floor().clamp(2, 64);
   }
 }
 

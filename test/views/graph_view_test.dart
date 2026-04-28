@@ -116,6 +116,44 @@ void main() {
       moreOrLessEquals(initialDateRangeTop),
     );
   });
+
+  testWidgets('graph chart stays compact on wide screens', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(2048, 1152);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          entryListProvider.overrideWith(
+            (ref) => _SeededEntries([
+              buildDayEntry(
+                date: DateTime(2026, 4, 28),
+                readings: const [],
+                morningValue: 470,
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: GraphView()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+
+    final chartPaintFinder = find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomPaint &&
+          widget.painter.runtimeType.toString() == '_PeakFlowChartPainter',
+    );
+
+    expect(chartPaintFinder, findsOneWidget);
+    expect(tester.getSize(chartPaintFinder).width, lessThanOrEqualTo(1120));
+    expect(tester.getSize(chartPaintFinder).height, lessThanOrEqualTo(600));
+  });
 }
 
 class _SeededEntries extends DayEntriesState {

@@ -96,6 +96,33 @@ void main() {
       expect(_opacityFor(tester, monthLabelKey), 0);
     },
   );
+
+  testWidgets('timeline cards stay compact on wide screens', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(2048, 1152);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          entryListProvider.overrideWith(
+            (ref) => _SeededDayEntriesState(buildMockDayEntries(count: 1)),
+          ),
+        ],
+        child: const MaterialApp(home: HomeView()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+
+    expect(
+      tester.getSize(find.byType(DateWidget)).width,
+      lessThanOrEqualTo(150),
+    );
+  });
 }
 
 double _opacityFor(WidgetTester tester, Key key) {
