@@ -380,6 +380,7 @@ class _AddViewState extends ConsumerState<AddView> {
               child: Form(
                 key: _formKey,
                 child: SingleChildScrollView(
+                  key: const ValueKey('addReadingScrollView'),
                   physics: isDraggingSelector
                       ? const NeverScrollableScrollPhysics()
                       : const ClampingScrollPhysics(),

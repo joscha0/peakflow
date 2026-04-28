@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -245,25 +246,36 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
         _commitValue();
         _setDragging(false);
       },
-      child: SizedBox(
-        width: meterWidth,
-        height: meterHeight,
-        child: CustomPaint(
-          size: meterSize,
-          painter: _PeakFlowMeterPainter(
-            maxVolume: widget.maxVolume,
-            referenceMaxVolume: referenceMaxVolume,
-            progress: progress,
-            activeColor: theme.colorScheme.primary,
-            shellColor: theme.colorScheme.onSurface.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.14 : 0.1,
+      child: RawGestureDetector(
+        key: const ValueKey('peakFlowValueMeter'),
+        behavior: HitTestBehavior.opaque,
+        gestures: {
+          EagerGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerGestureRecognizer>(
+                EagerGestureRecognizer.new,
+                (_) {},
+              ),
+        },
+        child: SizedBox(
+          width: meterWidth,
+          height: meterHeight,
+          child: CustomPaint(
+            size: meterSize,
+            painter: _PeakFlowMeterPainter(
+              maxVolume: widget.maxVolume,
+              referenceMaxVolume: referenceMaxVolume,
+              progress: progress,
+              activeColor: theme.colorScheme.primary,
+              shellColor: theme.colorScheme.onSurface.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.14 : 0.1,
+              ),
+              faceColor: theme.colorScheme.onSurface.withValues(
+                alpha: theme.brightness == Brightness.dark ? 0.09 : 0.06,
+              ),
+              meterMarkColor: theme.colorScheme.primary.withValues(alpha: 0.36),
+              textColor: theme.colorScheme.onSurface.withValues(alpha: 0.62),
+              channelColor: theme.dividerColor.withValues(alpha: 0.4),
             ),
-            faceColor: theme.colorScheme.onSurface.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.09 : 0.06,
-            ),
-            meterMarkColor: theme.colorScheme.primary.withValues(alpha: 0.36),
-            textColor: theme.colorScheme.onSurface.withValues(alpha: 0.62),
-            channelColor: theme.dividerColor.withValues(alpha: 0.4),
           ),
         ),
       ),
