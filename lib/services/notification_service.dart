@@ -1,5 +1,4 @@
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz;
@@ -8,16 +7,18 @@ import 'package:timezone/timezone.dart' as tz;
 enum NotificationPlatform { android, ios, macos, unsupported }
 
 NotificationPlatform currentNotificationPlatform() {
-  if (Platform.isAndroid) {
-    return NotificationPlatform.android;
+  if (kIsWeb) {
+    return NotificationPlatform.unsupported;
   }
-  if (Platform.isIOS) {
-    return NotificationPlatform.ios;
-  }
-  if (Platform.isMacOS) {
-    return NotificationPlatform.macos;
-  }
-  return NotificationPlatform.unsupported;
+
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => NotificationPlatform.android,
+    TargetPlatform.iOS => NotificationPlatform.ios,
+    TargetPlatform.macOS => NotificationPlatform.macos,
+    TargetPlatform.fuchsia ||
+    TargetPlatform.linux ||
+    TargetPlatform.windows => NotificationPlatform.unsupported,
+  };
 }
 
 abstract class NotificationPluginAdapter {
