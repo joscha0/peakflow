@@ -28,6 +28,7 @@ class PeakFlowValueSelector extends StatefulWidget {
 
 class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
   final valueController = TextEditingController();
+  final valueFocusNode = FocusNode();
   bool isDragging = false;
   late double _currentValue;
 
@@ -50,12 +51,15 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
         (oldWidget.value.round() != widget.value.round() ||
             oldWidget.maxVolume != widget.maxVolume)) {
       _currentValue = _clampValue(widget.value);
-      _syncValueText(_currentValue.round());
+      if (!valueFocusNode.hasFocus) {
+        _syncValueTextAfterFrame(_currentValue.round());
+      }
     }
   }
 
   @override
   void dispose() {
+    valueFocusNode.dispose();
     valueController.dispose();
     super.dispose();
   }
@@ -70,6 +74,15 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
+  }
+
+  void _syncValueTextAfterFrame(int value) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || valueFocusNode.hasFocus) {
+        return;
+      }
+      _syncValueText(value);
+    });
   }
 
   double _clampValue(double value) {
@@ -140,9 +153,12 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
     }
   }
 
-  void _normalizeTypedValue() {
+  void _commitTypedValue() {
     final parsedValue = int.tryParse(valueController.text) ?? 0;
-    _updateValue(parsedValue.toDouble());
+    final clampedValue = parsedValue.clamp(0, widget.maxVolume);
+    _setCurrentValue(clampedValue.toDouble());
+    _syncValueText(clampedValue);
+    widget.onChanged(clampedValue.toDouble());
   }
 
   void _setDragging(bool value) {
@@ -292,6 +308,7 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
           width: 170,
           child: TextFormField(
             controller: valueController,
+            focusNode: valueFocusNode,
             textAlign: TextAlign.center,
             keyboardType: TextInputType.number,
             inputFormatters: [
@@ -308,10 +325,10 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
             onChanged: _handleValueTextChanged,
             onTapOutside: (_) {
               FocusScope.of(context).unfocus();
-              _normalizeTypedValue();
+              _commitTypedValue();
             },
             onFieldSubmitted: (_) {
-              _normalizeTypedValue();
+              _commitTypedValue();
             },
           ),
         ),
