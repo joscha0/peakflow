@@ -35,7 +35,16 @@ class StoredReadings extends Table {
 @DriftDatabase(tables: [StoredDays, StoredReadings])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-    : super(executor ?? driftDatabase(name: 'peakflow_readings'));
+    : super(
+        executor ??
+            driftDatabase(
+              name: 'peakflow_readings',
+              web: DriftWebOptions(
+                sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+                driftWorker: Uri.parse('drift_worker.js'),
+              ),
+            ),
+      );
 
   @override
   int get schemaVersion => 1;
