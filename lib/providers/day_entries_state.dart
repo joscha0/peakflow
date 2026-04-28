@@ -1,35 +1,64 @@
-import 'dart:convert';
-
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/models/day_entry_model.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class DayEntriesState extends StateNotifier<List<DayEntry>> {
   DayEntriesState() : super([]);
 
+  Future<List<DayEntry>>? _loadEntriesFuture;
+  bool _hasLoadedEntries = false;
+
   Future<void> loadEntries() async {
-    List<DayEntry> entries = await getEntries();
-    final prefs = await SharedPreferences.getInstance();
-    bool sortUp = prefs.getBool('sortValue') ?? true;
-    if (sortUp) {
-      state = entries;
-    } else {
-      state = entries.reversed.toList();
+    final pendingLoad = _loadEntriesFuture;
+    if (pendingLoad != null) {
+      await pendingLoad;
+      return;
+    }
+
+    final loadFuture = _loadEntries();
+    _loadEntriesFuture = loadFuture;
+
+    try {
+      state = await loadFuture;
+      _hasLoadedEntries = true;
+    } finally {
+      if (identical(_loadEntriesFuture, loadFuture)) {
+        _loadEntriesFuture = null;
+      }
     }
   }
 
-  Future<List<DayEntry>> getEntries() async {
-    List<DayEntry> entries = [];
-    final prefs = await SharedPreferences.getInstance();
-    final List<String> dateList = prefs.getStringList("dates") ?? [];
-    dateList.sort();
-    for (String date in dateList) {
-      entries.add(DayEntry.fromJson(json.decode(prefs.getString(date) ?? "")));
+  Future<List<DayEntry>> getEntries({bool preferCached = true}) async {
+    if (preferCached && _hasLoadedEntries) {
+      return state;
     }
-    return entries;
+
+    final pendingLoad = _loadEntriesFuture;
+    if (pendingLoad != null) {
+      await pendingLoad;
+      return state;
+    }
+
+    if (preferCached) {
+      await loadEntries();
+      return state;
+    }
+
+    return _loadEntries();
   }
 
-  void changeSort() {
-    state = state.reversed.toList();
+  Future<List<DayEntry>> _loadEntries() async {
+    return getDayEntries();
+  }
+
+  void removeDay(DateTime date) {
+    state = state
+        .where(
+          (entry) =>
+              entry.date.year != date.year ||
+              entry.date.month != date.month ||
+              entry.date.day != date.day,
+        )
+        .toList();
   }
 }

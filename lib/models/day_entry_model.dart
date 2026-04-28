@@ -33,15 +33,16 @@ class DayEntry {
   });
 
   DayEntry.fromJson(Map<String, dynamic> json)
-      : date = DateTime.parse(json['date']),
-        readings = (json['readings'] as List)
-            .map((item) => Reading.fromJson(item))
-            .toList(),
-        note = json['note'],
-        morningValue = json['morningValue'],
-        eveningValue = json['eveningValue'],
-        checkboxValues = Map<String, bool>.from(json['checkboxValues'] ??
-            Map<String, bool>.from(defaultCheckboxValues));
+    : date = DateTime.parse(json['date']),
+      readings = (json['readings'] as List)
+          .map((item) => Reading.fromJson(item))
+          .toList(),
+      note = json['note'],
+      morningValue = json['morningValue'],
+      eveningValue = json['eveningValue'],
+      checkboxValues = Map<String, bool>.from(
+        json['checkboxValues'] ?? Map<String, bool>.from(defaultCheckboxValues),
+      );
 
   Map<String, dynamic> toJson() {
     return {
@@ -50,7 +51,7 @@ class DayEntry {
       'note': note,
       'morningValue': morningValue,
       'eveningValue': eveningValue,
-      'checkboxValues': checkboxValues
+      'checkboxValues': checkboxValues,
     };
   }
 }

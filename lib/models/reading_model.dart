@@ -5,18 +5,15 @@ class Reading {
   final int value;
   final String note;
 
-  Reading({
-    required this.time,
-    required this.value,
-    this.note = "",
-  });
+  Reading({required this.time, required this.value, this.note = ""});
 
   Reading.fromJson(Map<String, dynamic> json)
-      : time = TimeOfDay(
-            hour: int.parse(json['time'].split(":")[0]),
-            minute: int.parse(json['time'].split(":")[1])),
-        value = json['value'],
-        note = json['note'] ?? "";
+    : time = TimeOfDay(
+        hour: int.parse(json['time'].split(":")[0]),
+        minute: int.parse(json['time'].split(":")[1]),
+      ),
+      value = json['value'],
+      note = json['note'] ?? "";
 
   Map<String, dynamic> toJson() {
     return {

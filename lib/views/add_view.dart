@@ -1,21 +1,27 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/db/prefs.dart';
 import 'package:peakflow/global/consts.dart';
-import 'package:peakflow/models/day_entry_model.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:peakflow/l10n/l10n.dart';
+import 'package:peakflow/providers/day_entries_provider.dart';
+import 'package:peakflow/widgets/peak_flow_value_selector.dart';
 
-class AddView extends StatefulHookConsumerWidget {
+Future<void> showAddReadingDrawer(BuildContext context, {DateTime? date}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => AddView(date: date),
+  );
+}
+
+class AddView extends ConsumerStatefulWidget {
   final DateTime? date;
-  const AddView({Key? key, this.date}) : super(key: key);
+  const AddView({super.key, this.date});
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() => _AddViewState();
+  ConsumerState<AddView> createState() => _AddViewState();
 }
 
 class _AddViewState extends ConsumerState<AddView> {
@@ -23,22 +29,33 @@ class _AddViewState extends ConsumerState<AddView> {
 
   late DateTime date;
   TimeOfDay time = TimeOfDay.now();
+  bool isDraggingSelector = false;
+  bool showAdvanced = false;
   double sliderValue = 0;
   int maxVolume = 850;
-  final valueController = TextEditingController(text: "0");
+  int colorReferenceMaxValue = 850;
   final noteController = TextEditingController();
   final noteDayController = TextEditingController();
 
-  Map<String, bool> checkboxValues =
-      Map<String, bool>.from(defaultCheckboxValues);
+  Map<String, bool> checkboxValues = Map<String, bool>.from(
+    defaultCheckboxValues,
+  );
 
   void pickDate(BuildContext context) async {
-    date = await showDatePicker(
-            context: context,
-            initialDate: DateTime.now(),
-            firstDate: DateTime.now().add(const Duration(days: -100)),
-            lastDate: DateTime.now()) ??
-        DateTime.now();
+    final today = DateUtils.dateOnly(DateTime.now());
+    final firstDate = DateTime(2000, 1, 1);
+    date =
+        await showDatePicker(
+          context: context,
+          initialDate: date.isBefore(firstDate)
+              ? firstDate
+              : date.isAfter(today)
+              ? today
+              : date,
+          firstDate: firstDate,
+          lastDate: today,
+        ) ??
+        date;
     getDay();
 
     setState(() {});
@@ -47,191 +64,524 @@ class _AddViewState extends ConsumerState<AddView> {
   void pickTime(BuildContext context) async {
     time =
         await showTimePicker(context: context, initialTime: TimeOfDay.now()) ??
-            TimeOfDay.now();
+        TimeOfDay.now();
     setState(() {});
   }
 
   @override
   void initState() {
     date = widget.date ?? DateTime.now();
+    super.initState();
     getDay();
     loadMax();
-    super.initState();
   }
 
-  void getDay() async {
-    final prefs = await SharedPreferences.getInstance();
-    String key = DateFormat("yyyyMMdd").format(date);
-    String? jsonData = prefs.getString(key);
-    if (jsonData != null) {
-      DayEntry entry = DayEntry.fromJson(json.decode(jsonData));
+  Future<void> getDay() async {
+    final entry = await getDayEntry(date);
+    if (!mounted) {
+      return;
+    }
+    if (entry != null) {
       setState(() {
         noteDayController.text = entry.note;
         checkboxValues = entry.checkboxValues;
       });
     } else {
-      noteDayController.text = "";
-      checkboxValues = Map<String, bool>.from(defaultCheckboxValues);
+      setState(() {
+        noteDayController.text = "";
+        checkboxValues = Map<String, bool>.from(defaultCheckboxValues);
+      });
     }
   }
 
-  void loadMax() async {
-    final prefs = await SharedPreferences.getInstance();
-
+  Future<void> loadMax() async {
+    final values = await Future.wait<int>([
+      getDeviceMaxValue(),
+      getColorReferenceMaxValue(),
+    ]);
+    if (!mounted) {
+      return;
+    }
     setState(() {
-      maxVolume = prefs.getInt("maxVolume") ?? 850;
+      maxVolume = values[0];
+      colorReferenceMaxValue = values[1];
+      sliderValue = sliderValue.clamp(0, maxVolume.toDouble());
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Add reading"),
+  void dispose() {
+    noteController.dispose();
+    noteDayController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildSectionLabel(
+    BuildContext context,
+    String title,
+    String description,
+  ) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              height: 1.35,
+            ),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
+    );
+  }
+
+  Widget _buildSectionDivider(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.55),
+      ),
+    );
+  }
+
+  Widget _buildPickerButton({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onPressed,
+    double? width,
+  }) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      width: width,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.8)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: theme.colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdvancedToggle(BuildContext context) {
+    final theme = Theme.of(context);
+    final backgroundColor = showAdvanced
+        ? theme.colorScheme.primary.withValues(alpha: 0.08)
+        : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          setState(() {
+            showAdvanced = !showAdvanced;
+          });
+        },
+        child: Ink(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(18),
+          ),
           child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+            child: Row(
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Row(
-                      children: [
-                        const Text("Date: "),
-                        TextButton(
-                            onPressed: () {
-                              pickDate(context);
-                            },
-                            child: Text(DateFormat("dd.MM.yyyy").format(date))),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text("Time: "),
-                        TextButton(
-                            onPressed: () {
-                              pickTime(context);
-                            },
-                            child: Text(time.format(context))),
-                      ],
-                    )
-                  ],
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.tune_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
-                Row(
-                  children: [
-                    const Text("Value: "),
-                    Flexible(
-                      flex: 4,
-                      child: Slider(
-                        value: sliderValue,
-                        max: maxVolume.toDouble(),
-                        divisions: maxVolume ~/ 50,
-                        label: sliderValue.round().toString(),
-                        onChanged: (double value) {
-                          setState(() {
-                            sliderValue = value;
-                            valueController.text = value.round().toString();
-                          });
-                        },
-                      ),
-                    ),
-                    Flexible(
-                      child: TextFormField(
-                        controller: valueController,
-                        keyboardType: TextInputType.number,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value.isNotEmpty) {
-                              double newSliderValue = double.parse(value);
-                              if (newSliderValue > 0 &&
-                                  newSliderValue < maxVolume) {
-                                sliderValue = newSliderValue;
-                              }
-                            }
-                          });
-                        },
-                        inputFormatters: [
-                          FilteringTextInputFormatter(RegExp(r'[0-9]'),
-                              allow: true),
-                        ],
-                        decoration: const InputDecoration(
-                          labelText: "value",
-                          hintText: "123",
-                          border: OutlineInputBorder(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.l10n.advancedTitle,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(
-                  height: 8,
-                ),
-                TextFormField(
-                  controller: noteController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: "Notes reading",
-                    hintText: "...",
-                    border: OutlineInputBorder(),
+                      const SizedBox(height: 3),
+                      Text(
+                        context.l10n.advancedDescription,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.68,
+                          ),
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(
-                  height: 32,
-                ),
-                const Text(
-                  "Symptoms of the day",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(
-                  height: 8,
-                ),
-                for (String checkBox in checkboxValues.keys) ...[
-                  CheckboxListTile(
-                      value: checkboxValues[checkBox],
-                      title: Text(checkBox),
-                      onChanged: (value) {
-                        setState(() {
-                          checkboxValues[checkBox] = value ?? false;
-                        });
-                      }),
-                ],
-                const SizedBox(
-                  height: 8,
-                ),
-                TextFormField(
-                  controller: noteDayController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: "Notes day",
-                    hintText: "...",
-                    border: OutlineInputBorder(),
+                const SizedBox(width: 8),
+                AnimatedRotation(
+                  turns: showAdvanced ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+                    size: 30,
                   ),
-                ),
-                const SizedBox(
-                  height: 32,
                 ),
               ],
             ),
           ),
         ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          if (!_formKey.currentState!.validate()) {
-            return;
-          }
-          await addReading(date, time, sliderValue.round(), noteController.text,
-              noteDayController.text, checkboxValues);
-          ref.read(entryListProvider.notifier).loadEntries();
-          Navigator.pop(context);
-        },
-        label: const Text("SAVE"),
-        icon: const Icon(Icons.save),
+    );
+  }
+
+  Future<void> _saveReading() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    await addReading(
+      date,
+      time,
+      sliderValue.round(),
+      noteController.text,
+      noteDayController.text,
+      checkboxValues,
+    );
+    await ref.read(entryListProvider.notifier).loadEntries();
+    ref.invalidate(colorReferenceMaxValueProvider);
+    if (!mounted) {
+      return;
+    }
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final localeName = Localizations.localeOf(context).toLanguageTag();
+    final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    final maxSheetHeight = MediaQuery.sizeOf(context).height * 0.92;
+    final effectiveColorReferenceMaxValue = ref
+        .watch(colorReferenceMaxValueProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => colorReferenceMaxValue,
+        );
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsets.bottom),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: maxSheetHeight),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.16),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: theme.dividerColor.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          l10n.addReadingTitle,
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              child: Form(
+                key: _formKey,
+                child: SingleChildScrollView(
+                  key: const ValueKey('addReadingScrollView'),
+                  physics: isDraggingSelector
+                      ? const NeverScrollableScrollPhysics()
+                      : const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.addReadingInstruction,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurface.withValues(
+                            alpha: 0.72,
+                          ),
+                          height: 1.35,
+                        ),
+                      ),
+                      PeakFlowValueSelector(
+                        value: sliderValue,
+                        maxVolume: maxVolume,
+                        referenceMaxVolume: effectiveColorReferenceMaxValue,
+                        valueAboveMeter: true,
+                        onChanged: (value) {
+                          setState(() {
+                            sliderValue = value;
+                          });
+                        },
+                        onDraggingChanged: (isDragging) {
+                          setState(() {
+                            isDraggingSelector = isDragging;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          l10n.maximumReading(effectiveColorReferenceMaxValue),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.68,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _buildAdvancedToggle(context),
+                      AnimatedCrossFade(
+                        firstChild: const SizedBox(width: double.infinity),
+                        secondChild: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildSectionDivider(context),
+                            _buildSectionLabel(
+                              context,
+                              l10n.whenTitle,
+                              l10n.addWhenDescription,
+                            ),
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final stacked = constraints.maxWidth < 430;
+                                final buttonWidth = stacked
+                                    ? double.infinity
+                                    : (constraints.maxWidth - 12) / 2;
+
+                                return Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    _buildPickerButton(
+                                      context: context,
+                                      icon: Icons.calendar_today_outlined,
+                                      label: l10n.dateLabel,
+                                      value: DateFormat(
+                                        "dd.MM.yyyy",
+                                        localeName,
+                                      ).format(date),
+                                      width: buttonWidth,
+                                      onPressed: () {
+                                        pickDate(context);
+                                      },
+                                    ),
+                                    _buildPickerButton(
+                                      context: context,
+                                      icon: Icons.access_time_outlined,
+                                      label: l10n.timeLabel,
+                                      value: time.format(context),
+                                      width: buttonWidth,
+                                      onPressed: () {
+                                        pickTime(context);
+                                      },
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                            _buildSectionDivider(context),
+                            _buildSectionLabel(
+                              context,
+                              l10n.notesTitle,
+                              l10n.readingNotesDescription,
+                            ),
+                            TextFormField(
+                              controller: noteController,
+                              maxLines: 3,
+                              decoration: InputDecoration(
+                                labelText: l10n.readingNotesLabel,
+                                hintText: l10n.readingNotesHint,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                            ),
+                            _buildSectionDivider(context),
+                            _buildSectionLabel(
+                              context,
+                              l10n.symptomsOfTheDayTitle,
+                              l10n.addSymptomsDescription,
+                            ),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                for (final checkBox in checkboxValues.keys)
+                                  FilterChip(
+                                    label: Text(l10n.symptomLabel(checkBox)),
+                                    selected: checkboxValues[checkBox] ?? false,
+                                    showCheckmark: true,
+                                    checkmarkColor: theme.colorScheme.primary,
+                                    selectedColor: theme.colorScheme.primary
+                                        .withValues(alpha: 0.16),
+                                    side: BorderSide(
+                                      color: (checkboxValues[checkBox] ?? false)
+                                          ? theme.colorScheme.primary
+                                          : theme.dividerColor.withValues(
+                                              alpha: 0.85,
+                                            ),
+                                    ),
+                                    labelStyle: theme.textTheme.bodyMedium
+                                        ?.copyWith(
+                                          color:
+                                              (checkboxValues[checkBox] ??
+                                                  false)
+                                              ? theme.colorScheme.primary
+                                              : null,
+                                          fontWeight:
+                                              (checkboxValues[checkBox] ??
+                                                  false)
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                        ),
+                                    onSelected: (value) {
+                                      setState(() {
+                                        checkboxValues[checkBox] = value;
+                                      });
+                                    },
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: noteDayController,
+                              maxLines: 3,
+                              decoration: InputDecoration(
+                                labelText: l10n.dayNotesLabel,
+                                hintText: l10n.dayNotesHint,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        crossFadeState: showAdvanced
+                            ? CrossFadeState.showSecond
+                            : CrossFadeState.showFirst,
+                        duration: const Duration(milliseconds: 180),
+                        sizeCurve: Curves.easeOut,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottomSafeArea),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(l10n.cancel),
+                  ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: _saveReading,
+                    icon: const Icon(Icons.save),
+                    label: Text(l10n.save),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

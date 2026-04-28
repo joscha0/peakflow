@@ -1,22 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:peakflow/global/consts.dart';
 
 class ThemeState extends ChangeNotifier {
-  bool isDarkMode =
-      SchedulerBinding.instance.window.platformBrightness == Brightness.dark;
+  ThemeState({
+    required bool initialIsDarkMode,
+    required int initialPrimaryColorValue,
+  }) : isDarkMode = initialIsDarkMode,
+       primaryColor = _resolvePrimaryColor(initialPrimaryColorValue);
 
-  ThemeState() {
-    SharedPreferences.getInstance().then((prefs) {
-      isDarkMode = prefs.getBool("isDarkMode") ??
-          SchedulerBinding.instance.window.platformBrightness ==
-              Brightness.dark;
-      notifyListeners();
-    });
-  }
+  bool isDarkMode;
+  Color primaryColor;
 
   void setIsDarkMode(bool value) {
     isDarkMode = value;
     notifyListeners();
+  }
+
+  void setPrimaryColor(Color value) {
+    primaryColor = _resolvePrimaryColor(value.toARGB32());
+    notifyListeners();
+  }
+
+  static Color _resolvePrimaryColor(int colorValue) {
+    for (final color in primaryColorOptions) {
+      if (color.toARGB32() == colorValue) {
+        return color;
+      }
+    }
+    return defaultAccent;
   }
 }
