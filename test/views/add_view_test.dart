@@ -130,6 +130,32 @@ void main() {
       expect(selectedValue, 1);
     },
   );
+
+  testWidgets('peak flow selector caps meter width on wide screens', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PeakFlowValueSelector(
+            value: 0,
+            maxVolume: 850,
+            onChanged: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('peakFlowValueMeter'))).width,
+      760,
+    );
+  });
 }
 
 class _AddReadingLauncher extends StatelessWidget {

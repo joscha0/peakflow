@@ -4,6 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+const double _maxMeterWidth = 760;
+
 class PeakFlowValueSelector extends StatefulWidget {
   const PeakFlowValueSelector({
     super.key,
@@ -180,9 +182,10 @@ class _PeakFlowValueSelectorState extends State<PeakFlowValueSelector> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final meterWidth = constraints.hasBoundedWidth
+        final availableWidth = constraints.hasBoundedWidth
             ? constraints.maxWidth
-            : 440.0;
+            : _maxMeterWidth;
+        final meterWidth = math.min(availableWidth, _maxMeterWidth);
         final meterHeight = meterWidth * 0.35;
         final meterSize = Size(meterWidth, meterHeight);
 
