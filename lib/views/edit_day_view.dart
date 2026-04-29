@@ -169,6 +169,9 @@ class _EditDayViewState extends ConsumerState<EditDayView> {
               TextFormField(
                 controller: noteDayController,
                 maxLines: 3,
+                onTapOutside: (_) {
+                  FocusScope.of(context).unfocus();
+                },
                 decoration: InputDecoration(
                   labelText: l10n.dayNotesLabel,
                   hintText: l10n.dayNotesHint,

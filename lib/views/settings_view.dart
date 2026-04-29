@@ -14,6 +14,7 @@ import 'package:peakflow/providers/locale_provider.dart';
 import 'package:peakflow/providers/locale_state.dart';
 import 'package:peakflow/providers/theme_provider.dart';
 import 'package:peakflow/services/notification_service.dart';
+import 'package:peakflow/widgets/platform_date_time_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -667,7 +668,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
   }
 
   Future<void> displayTimePicker(BuildContext context) async {
-    final pickedTime = await showTimePicker(
+    final pickedTime = await showPlatformTimePicker(
       context: context,
       initialTime: TimeOfDay(
         hour: notificationHour,
@@ -866,6 +867,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 TextFormField(
                   controller: controller,
                   keyboardType: TextInputType.number,
+                  onTapOutside: (_) {
+                    FocusScope.of(context).unfocus();
+                  },
                   decoration: InputDecoration(
                     labelText: labelText,
                     hintText: "$defaultMaxVolume",
@@ -892,6 +896,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 child: TextFormField(
                   controller: controller,
                   keyboardType: TextInputType.number,
+                  onTapOutside: (_) {
+                    FocusScope.of(context).unfocus();
+                  },
                   decoration: InputDecoration(
                     labelText: labelText,
                     hintText: "$defaultMaxVolume",
@@ -1139,6 +1146,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     children: [
                       TextFormField(
                         controller: titleController,
+                        onTapOutside: (_) {
+                          FocusScope.of(context).unfocus();
+                        },
                         decoration: InputDecoration(
                           labelText: l10n.notificationTitleLabel,
                           hintText: l10n.notificationDefaultTitle,
@@ -1148,6 +1158,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: bodyController,
+                        onTapOutside: (_) {
+                          FocusScope.of(context).unfocus();
+                        },
                         decoration: InputDecoration(
                           labelText: l10n.notificationBodyLabel,
                           hintText: l10n.notificationDefaultBody,
@@ -1264,6 +1277,9 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       controller: debugMockCountController,
                       enabled: !isDebugDataOperationInProgress,
                       keyboardType: TextInputType.number,
+                      onTapOutside: (_) {
+                        FocusScope.of(context).unfocus();
+                      },
                       decoration: InputDecoration(
                         labelText: l10n.mockDaysToGenerateLabel,
                         hintText: '120',

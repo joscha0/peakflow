@@ -8,6 +8,7 @@ import 'package:peakflow/models/reading_model.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/views/day_view.dart';
 import 'package:peakflow/widgets/peak_flow_value_selector.dart';
+import 'package:peakflow/widgets/platform_date_time_picker.dart';
 
 class EditReadingView extends ConsumerStatefulWidget {
   final Reading reading;
@@ -58,7 +59,10 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
   }
 
   void pickTime(BuildContext context) async {
-    time = await showTimePicker(context: context, initialTime: time) ?? time;
+    FocusScope.of(context).unfocus();
+    time =
+        await showPlatformTimePicker(context: context, initialTime: time) ??
+        time;
     setState(() {});
   }
 
@@ -239,6 +243,9 @@ class _EditReadingViewState extends ConsumerState<EditReadingView> {
               TextFormField(
                 controller: noteController,
                 maxLines: 3,
+                onTapOutside: (_) {
+                  FocusScope.of(context).unfocus();
+                },
                 decoration: InputDecoration(
                   labelText: l10n.readingNotesLabel,
                   hintText: l10n.readingNotesHint,

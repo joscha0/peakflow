@@ -6,6 +6,7 @@ import 'package:peakflow/global/consts.dart';
 import 'package:peakflow/l10n/l10n.dart';
 import 'package:peakflow/providers/day_entries_provider.dart';
 import 'package:peakflow/widgets/peak_flow_value_selector.dart';
+import 'package:peakflow/widgets/platform_date_time_picker.dart';
 
 Future<void> showAddReadingDrawer(BuildContext context, {DateTime? date}) {
   return showModalBottomSheet<void>(
@@ -44,14 +45,11 @@ class _AddViewState extends ConsumerState<AddView> {
   void pickDate(BuildContext context) async {
     final today = DateUtils.dateOnly(DateTime.now());
     final firstDate = DateTime(2000, 1, 1);
+    FocusScope.of(context).unfocus();
     date =
-        await showDatePicker(
+        await showPlatformDatePicker(
           context: context,
-          initialDate: date.isBefore(firstDate)
-              ? firstDate
-              : date.isAfter(today)
-              ? today
-              : date,
+          initialDate: date,
           firstDate: firstDate,
           lastDate: today,
         ) ??
@@ -62,9 +60,10 @@ class _AddViewState extends ConsumerState<AddView> {
   }
 
   void pickTime(BuildContext context) async {
+    FocusScope.of(context).unfocus();
     time =
-        await showTimePicker(context: context, initialTime: TimeOfDay.now()) ??
-        TimeOfDay.now();
+        await showPlatformTimePicker(context: context, initialTime: time) ??
+        time;
     setState(() {});
   }
 
@@ -484,6 +483,9 @@ class _AddViewState extends ConsumerState<AddView> {
                             TextFormField(
                               controller: noteController,
                               maxLines: 3,
+                              onTapOutside: (_) {
+                                FocusScope.of(context).unfocus();
+                              },
                               decoration: InputDecoration(
                                 labelText: l10n.readingNotesLabel,
                                 hintText: l10n.readingNotesHint,
@@ -542,6 +544,9 @@ class _AddViewState extends ConsumerState<AddView> {
                             TextFormField(
                               controller: noteDayController,
                               maxLines: 3,
+                              onTapOutside: (_) {
+                                FocusScope.of(context).unfocus();
+                              },
                               decoration: InputDecoration(
                                 labelText: l10n.dayNotesLabel,
                                 hintText: l10n.dayNotesHint,
